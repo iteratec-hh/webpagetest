@@ -98,6 +98,9 @@ public:
   void OnStatusMessage(CString status);
   bool IsDone();
   void GrabVideoFrame(bool force = false);
+  void PaintEvent(int x, int y, int width, int height);
+  void CheckStartRender();
+  void RenderCheckThread();
   void CollectData();
   void Reset(bool cascade = true);
   void Init();
@@ -107,15 +110,12 @@ public:
   void FindBrowserNameAndVersion();
   void AddConsoleLogMessage(CString message);
   void AddTimedEvent(CString timed_event);
-  void SetCustomMetrics(CString custom_metrics);
   CString GetConsoleLogJSON();
   CString GetTimedEventsJSON();
   void GetElapsedCPUTimes(double &doc, double &end,
                           double &doc_total, double &end_total);
   void Lock();
   void UnLock();
-  void ResizeBrowserForResponsiveTest();
-  void CheckResponsive();
 
   // times
   LARGE_INTEGER _start;
@@ -151,8 +151,6 @@ public:
   CString _user_agent;
   int _fixed_viewport;
   int _dom_element_count;
-  int _is_responsive;
-  int _viewport_specified;
 
   bool  _active;
   int   _current_document;
@@ -165,12 +163,13 @@ public:
   bool received_data_;
 
   HWND  _frame_window;
+  HWND  _document_window;
+  bool  _screen_updated;
 
   WptTestHook& _test;
   
   CAtlList<ProgressData>   _progress_data;     // CPU, memory and Bandwidth
   CAtlList<StatusMessage>  _status_messages;   // Browser status
-  CString                  _custom_metrics;    // JSON-formatted custom metrics data
 
 private:
   bool  _started;
@@ -179,12 +178,13 @@ private:
   ScreenCapture& _screen_capture;
   DevTools &_dev_tools;
   Trace &_trace;
+  HANDLE  _render_check_thread;
+  HANDLE  _check_render_event;
   HANDLE  _data_timer;
   CAtlList<CString>        _console_log_messages; // messages to the console
   CAtlList<CString>        _timed_events; // any supported timed events
   CString process_full_path_;
   CString process_base_exe_;
-  CString last_title_;
 
 
   // tracking of the periodic data capture
@@ -205,7 +205,6 @@ private:
 
   void Done(bool force = false);
   void CollectSystemStats(LARGE_INTEGER &now);
-  void CheckTitle();
   void FindViewport(bool force = false);
   void RecordTime(CString time_name, DWORD time, LARGE_INTEGER * out_time);
   DWORD ElapsedMs(LARGE_INTEGER start, LARGE_INTEGER end) const;

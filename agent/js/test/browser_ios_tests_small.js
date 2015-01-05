@@ -53,8 +53,6 @@ describe('browser_ios small', function() {
   var videoStart;
   var videoStop;
 
-  var glob = '/private/var/mobile/Applications/*/MobileSafari.app/Info.plist';
-
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
 
@@ -89,30 +87,27 @@ describe('browser_ios small', function() {
   });
 
   it('should start and get killed with default environment', function() {
-    startBrowser_({runNumber: 1, flags: {deviceSerial: 'GAGA123'}, task: {}});
+    startBrowser_({runNumber: 1, deviceSerial: 'GAGA123'});
     killBrowser_();
   });
 
   it('should start and get killed with full environment', function() {
-    startBrowser_({runNumber: 1, flags: {
-        deviceSerial: 'GAGA123',
-        iosDeviceDir: '/gaga/ios/darwin',
-        iosSshProxyDir: '/python/proxy',
-        iosSshCert: '/home/user/.ssh/my_cert',
-        iosUrlOpenerApp: '/apps/urlOpener.ipa'
-      }, task: {}});
+    startBrowser_({runNumber: 1, deviceSerial: 'GAGA123',
+         iosDeviceDir: '/gaga/ios/darwin',
+         iosSshProxyDir: '/python/proxy',
+         iosSshCert: '/home/user/.ssh/my_cert',
+         iosUrlOpenerApp: '/apps/urlOpener.ipa'});
     killBrowser_();
   });
 
   it('should use PAC server', function() {
-    startBrowser_({runNumber: 1, flags: {deviceSerial: 'GAGA123'},
-        task: {pac: 'function FindProxyForURL...'}});
+    startBrowser_({runNumber: 1, deviceSerial: 'GAGA123',
+        pac: 'function FindProxyForURL...'});
     killBrowser_();
   });
 
   it('should record video with the correct device type', function() {
-    startBrowser_({runNumber: 1, flags: {deviceSerial: 'GAGA123',
-        videoCard: 2}, task: {}});
+    startBrowser_({runNumber: 1, deviceSerial: 'GAGA123', videoCard: 2});
     startVideo_();
     stopVideo_();
     killBrowser_();
@@ -121,8 +116,7 @@ describe('browser_ios small', function() {
   it('should take a screenshot', function() {
     var screenshotCbSpy = sandbox.spy();
     browser = new browser_ios.BrowserIos(app,
-        {runNumber: 1, runTempDir: 'runtmp',
-        flags: {deviceSerial: 'GAGA123'}, task: {}});
+        {deviceSerial: 'GAGA123', runNumber: 1, runTempDir: 'runtmp'});
     browser.scheduleTakeScreenshot('gaga').then(screenshotCbSpy);
     sandbox.clock.tick(webdriver.promise.ControlFlow.EVENT_LOOP_FREQUENCY * 10);
 
@@ -152,12 +146,8 @@ describe('browser_ios small', function() {
   function spawnCallback_(proc, cmd, argv) {
     var stdout;
     if ('ssh' === cmd) {
-      var argN = argv[argv.length - 1];
-      if (/^echo\s+list\s+Setup.*scutil$/.test(argN)) {
+      if (/^echo\s+list\s+Setup.*scutil$/.test(argv[argv.length - 1])) {
         stdout = 'subKey [123] = foo';
-      } else if (/^test\s+-f\s+(\S+)\s*|\s*ls\s+\1$/.test(argN)) {
-        var path = argN.split(/\s/)[2].trim();
-        stdout = (path === glob ? glob.replace('*', 'MyApp') : '');
       } else {
         stdout = '';
       }
@@ -168,7 +158,9 @@ describe('browser_ios small', function() {
         stdout = 'Install - Complete';
       } else if (/idevice-app-runner$/.test(cmd)) {
         if (-1 !== argv.indexOf('check_gdb')) {
-          proc.stderr.emit('data', 'Unknown APPID (check_gdb) is not in:\n');
+          global.setTimeout(function() {
+            proc.stderr.emit('data', 'Unknown APPID (check_gdb) is not in:\n');
+          }, 1);
           global.setTimeout(function() {
             ['exit', 'close'].forEach(function(evt) {
               proc.emit(evt, 1);
@@ -193,7 +185,9 @@ describe('browser_ios small', function() {
       should.fail('Unexpected ' + cmd + ' ' + (argv || []).join(' '));
     }
     if (stdout) {
-      proc.stdout.emit('data', stdout);
+      global.setTimeout(function() {
+        proc.stdout.emit('data', stdout);
+      }, 1);
     }
     return false; // exit with success
   }
@@ -211,30 +205,24 @@ describe('browser_ios small', function() {
     test_utils.tickUntilIdle(app, sandbox);
     should.ok(browser.isRunning());
 
-    var serial = args.flags.deviceSerial;
+    var serial = args.deviceSerial;
     spawnStub.assertCall(/idevice-app-runner$/, '-U', serial, '-r',
         'check_gdb');
 
     if (1 === args.runNumber) {
-      var appPath = (args.flags.iosUrlOpenerApp || 'urlOpener.ipa');
+      var appPath = (args.iosUrlOpenerApp || 'urlOpener.ipa');
       spawnStub.assertCall(/ideviceinstaller$/, '-U', serial, '-i', appPath);
     }
 
     var proxy = ['-F', '/dev/null', '-i', /^\//, '-o',
         (/^ProxyCommand="[^"]+"\s+-u\s+%h$/), '-o', 'User=root'];
     var sshMatch = [(/ssh$/)].concat(proxy).concat([serial]);
-    var lib = '/private/var/mobile/Applications/MyApp/Library/';
     spawnStub.assertCalls(
         sshMatch.concat(['killall', 'MobileSafari']),
-        sshMatch.concat(['test -f ' + glob + ' | ls ' + glob]),
         sshMatch.concat(['rm', '-rf',
-          lib + 'Caches/com.apple.mobilesafari/Cache.db',
-          lib + 'Caches/fsCachedData/*',
-          lib + 'Safari/History.plist',
-          lib + 'Safari/SuspendState.plist',
-          lib + 'WebKit/LocalStorage',
-          '/private/var/mobile/Library/Cookies/Cookies.binarycookies']));
-    if (args.task.pac) {
+            /\/Cache\.db$/, /\/SuspendState\.plist$/, /\/LocalStorage$/,
+            /\/ApplicationCache\.db$/, /\/Cookies\.binarycookies/]));
+    if (args.pac) {
       spawnStub.assertCalls(
           sshMatch.concat(['-R', /^\d+:127.0.0.1:\d+$/, '-N']));
     }
@@ -245,7 +233,7 @@ describe('browser_ios small', function() {
         sshMatch.concat([(/^echo\s+list\s+Setup[^\|]+|\s*scutil$/)]),
         sshMatch.concat([new RegExp(
             '^echo\\s+-e\\s+.*' +
-            (args.task.pac ?
+            (args.pac ?
               'd.add\\s+Proxy\\S+\\s+\\S+\/proxy.pac' :
               'd.remove\\s+Proxy') +
             '.*|\\s*scutil$')]),
@@ -272,11 +260,10 @@ describe('browser_ios small', function() {
     test_utils.tickUntilIdle(app, sandbox);
     should.ok(videoStart.calledOnce);
     spawnStub.assertCall(/ideviceinfo$/, '-k', 'ProductType', '-u',
-        args.flags.deviceSerial);
+        args.deviceSerial);
     spawnStub.assertCall();
     test_utils.assertStringsMatch(
-        ['test.avi', args.flags.deviceSerial,
-         'iPhone666', args.flags.videoCard],
+        ['test.avi', args.deviceSerial, 'iPhone666', args.videoCard],
         videoStart.firstCall.args.slice(0, 4));
     should.ok(videoStop.notCalled);
   }
@@ -297,7 +284,7 @@ describe('browser_ios small', function() {
 
     should.equal(undefined, browser.getServerUrl());
     should.equal(undefined, browser.getDevToolsUrl());
-    if (args.task.pac) {
+    if (args.pac) {
       spawnStub.assertCalls(
          {0: 'ssh', '-1': /^echo\s+list\+Setup.*|\s*scutil$/},
          {0: 'ssh', '-1': /^echo\s+-e\+.*d.remove\s+Proxy.*|\s*scutil$/},

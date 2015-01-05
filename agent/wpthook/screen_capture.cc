@@ -64,12 +64,11 @@ void ScreenCapture::Reset() {
 /*-----------------------------------------------------------------------------
   Capture a screen shot and save it in our list
 -----------------------------------------------------------------------------*/
-void ScreenCapture::Capture(HWND wnd, CapturedImage::TYPE type,
-                            bool crop_viewport) {
+void ScreenCapture::Capture(HWND wnd, CapturedImage::TYPE type) {
   if (wnd) {
     EnterCriticalSection(&cs);
     RECT * rect = NULL;
-    if (crop_viewport && _viewport_set)
+    if (_viewport_set)
       rect = &_viewport;
     CapturedImage image(wnd, type, rect);
     _captured_images.AddTail(image);
@@ -80,13 +79,12 @@ void ScreenCapture::Capture(HWND wnd, CapturedImage::TYPE type,
 /*-----------------------------------------------------------------------------
   Capture a screen shot and return it without saving it
 -----------------------------------------------------------------------------*/
-CapturedImage ScreenCapture::CaptureImage(HWND wnd, CapturedImage::TYPE type,
-                                          bool crop_viewport) {
+CapturedImage ScreenCapture::CaptureImage(HWND wnd, CapturedImage::TYPE type) {
   CapturedImage ret;
   if (wnd) {
     EnterCriticalSection(&cs);
     RECT * rect = NULL;
-    if (crop_viewport && _viewport_set)
+    if (_viewport_set)
       rect = &_viewport;
     CapturedImage captured(wnd, type, rect);
     ret = captured;

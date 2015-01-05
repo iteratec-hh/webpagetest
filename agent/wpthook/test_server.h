@@ -56,12 +56,6 @@ private:
   DevTools          &dev_tools_;
   Trace             &trace_;
   CRITICAL_SECTION  cs;
-  bool              started_;
-  ULARGE_INTEGER    last_cpu_idle_;
-  ULARGE_INTEGER    last_cpu_kernel_;
-  ULARGE_INTEGER    last_cpu_user_;
-  LARGE_INTEGER     start_check_time_;
-  LARGE_INTEGER     start_check_freq_;
 
   void SendResponse(struct mg_connection *conn,
                     const struct mg_request_info *request_info,
@@ -69,13 +63,9 @@ private:
                     CStringA response_code_string,
                     CStringA response_data);
   CString GetParam(const CString query_string, const CString key) const;
-  bool GetDwordParam(const CString query_string, const CString key,
-                     DWORD& value) const;
-  bool GetIntParam(const CString query_string, const CString key,
-                   int& value) const;
+  DWORD GetDwordParam(const CString query_string, const CString key) const;
   CString GetUnescapedParam(const CString query_string,
                              const CString key) const;
   CString GetPostBody(struct mg_connection *conn,
                       const struct mg_request_info *request_info);
-  bool OkToStart();
 };

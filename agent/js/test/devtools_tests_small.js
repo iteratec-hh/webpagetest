@@ -69,7 +69,7 @@ describe('devtools small', function() {
     var response = new ResponseType();
 
     var callbackSpy = sandbox.spy();
-    devtools.processResponse(response, callbackSpy);
+    devtools.ProcessResponse(response, callbackSpy);
 
     response.emit('data', responseBody1);
     response.emit('data', responseBody2);
@@ -88,7 +88,8 @@ describe('devtools small', function() {
       callback(getResponse, callback);
       return new Stream();
     });
-    sandbox.stub(devtools, 'processResponse', function(response, callback) {
+    sandbox.stub(devtools, 'ProcessResponse',
+        function(response, callback) {
       callback(response);
     });
 

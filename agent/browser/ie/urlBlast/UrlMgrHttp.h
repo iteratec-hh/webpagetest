@@ -33,10 +33,7 @@ protected:
 	DWORD	nextCheck;
 	bool	videoSupported;
 	DWORD	lastSuccess;
-	DWORD	majorVer;
-	DWORD	minorVer;
-	DWORD	buildNo;
-	DWORD	revisionNo;
+	DWORD	version;
 	CString verString;
   DWORD requestFlags;
   CString dnsServers;

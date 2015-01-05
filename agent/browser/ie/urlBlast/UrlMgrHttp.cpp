@@ -37,10 +37,7 @@ CUrlMgrHttp::CUrlMgrHttp(CLog &logRef):
 	, nextCheck(0)
 	, videoSupported(false)
 	, lastSuccess(0)
-	, majorVer(0)
-	, minorVer(0)
-	, buildNo(0)
-	, revisionNo(0)
+	, version(0)
 	, noUpdate(false)
   , port(80)
   , requestFlags(0)
@@ -87,12 +84,7 @@ CUrlMgrHttp::CUrlMgrHttp(CLog &logRef):
 				if( VerQueryValue(pVersion, _T("\\"), (LPVOID*)&info, &size) )
 				{
 					if( info )
-					{
-						majorVer = HIWORD(info->dwFileVersionMS);
-						minorVer = LOWORD(info->dwFileVersionMS);
-						buildNo = HIWORD(info->dwFileVersionLS);
-						revisionNo = LOWORD(info->dwFileVersionLS);
-					}
+						version = LOWORD(info->dwFileVersionLS);
 				}
 			}
 
@@ -162,8 +154,8 @@ void CUrlMgrHttp::Start()
 			CString videoStr;
 			if( videoSupported )
 				videoStr = _T("&video=1");
-			if( ( majorVer || minorVer || buildNo || revisionNo) && !noUpdate )
-				verString.Format(_T("&version=%d.%d.%d.%d&ver=%d"), majorVer, minorVer, buildNo, revisionNo, revisionNo);
+			if( version && !noUpdate )
+				verString.Format(_T("&ver=%d"), version);
 			CString ec2;
 			if( ec2Instance.GetLength() )
 				ec2 = CString(_T("&ec2=")) + ec2Instance;
@@ -326,7 +318,7 @@ bool CUrlMgrHttp::GetNextUrl(CTestInfo &info)
 							}
 							else if( !key.CompareNoCase(_T("Host")) )
 								info.host = value;
-							else if( !key.CompareNoCase(_T("BrowserExe")) )
+							else if( !key.CompareNoCase(_T("Browser")) )
 								info.browser = value;
 							else if( !key.CompareNoCase(_T("noopt")) && _ttol(value) )
                 info.checkOpt = 0;
@@ -354,11 +346,6 @@ bool CUrlMgrHttp::GetNextUrl(CTestInfo &info)
                 if (!info.customRules.IsEmpty())
                   info.customRules += _T("\n");
                 info.customRules += value;
-              }
-              else if( !key.CompareNoCase(_T("customMetric")) ) {
-                if (!info.customMetrics.IsEmpty())
-                  info.customMetrics += "\n";
-                info.customMetrics += (LPCSTR)CT2A(value);
               }
 							else if( !key.CompareNoCase(_T("clearcerts")) && _ttol(value) )
                 info.clearCerts = true;
@@ -389,7 +376,6 @@ bool CUrlMgrHttp::GetNextUrl(CTestInfo &info)
 
 					context->fileRunBase.Format(_T("%s-%d"), (LPCTSTR)context->fileBase, index);
 					info.logFile = workDir + context->fileRunBase;
-          info.customMetricsFile = workDir + _T("custom.txt");
 
 					if( info.eventText.IsEmpty() )						
             info.eventText.Format(_T("Run_%d"), info.currentRun);
@@ -496,10 +482,6 @@ bool CUrlMgrHttp::RunRepeatView(CTestInfo &info)
 void CUrlMgrHttp::UrlFinished(CTestInfo &info)
 {
   UpdateDNSServers();
-  if (!info.customMetricsFile.IsEmpty()) {
-    DeleteFile(info.customMetricsFile);
-    info.customMetricsFile.Empty();
-  }
 	if( info.context )
 	{
 		CUrlMgrHttpContext * context = (CUrlMgrHttpContext *)info.context;
@@ -570,7 +552,6 @@ void CUrlMgrHttp::UrlFinished(CTestInfo &info)
 
 				info.logFile = workDir + context->fileRunBase;
 				info.eventText = CString(_T("Run_")) + runText;
-        info.customMetricsFile = workDir + _T("custom.txt");
 
 				if( info.harvestLinks )
 					info.linksFile = workDir + context->fileRunBase + _T("_links.txt");

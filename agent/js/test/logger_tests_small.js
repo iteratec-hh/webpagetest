@@ -84,11 +84,13 @@ describe('logger small', function() {
     logger.info('info message');
 
     var lines = buffer.split('\n');
-    should.equal(5, lines.length);
-    lines[0].should.match(/^E \S+ logger_tests_small.*: error message$/);
+    should.equal(7, lines.length);
+    should.ok(/^E .*: error message$/.test(lines[0]));
     should.ok(/^W .*: warning message$/.test(lines[1]));
     should.ok(/^I .*: info message$/.test(lines[2]));
     should.ok(/^F .*: log message$/.test(lines[3]));
-    should.equal('.1', lines[4]);
+    should.ok(/^\./.test(lines[4]));
+    should.ok(/^I .*: info message$/.test(lines[5]));
+    should.ok(/^$/.test(lines[6]));
   });
 });

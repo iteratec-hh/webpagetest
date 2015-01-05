@@ -41,7 +41,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cximage/ximage.h"
 #include <zlib.h>
 #include <zip.h>
-#include <regex>
 
 static const TCHAR * PAGE_DATA_FILE = _T("_IEWPG.txt");
 static const TCHAR * REQUEST_DATA_FILE = _T("_IEWTR.txt");
@@ -52,10 +51,8 @@ static const TCHAR * IMAGE_DOC_COMPLETE = _T("_screen_doc.jpg");
 static const TCHAR * IMAGE_FULLY_LOADED = _T("_screen.jpg");
 static const TCHAR * IMAGE_FULLY_LOADED_PNG = _T("_screen.png");
 static const TCHAR * IMAGE_START_RENDER = _T("_screen_render.jpg");
-static const TCHAR * IMAGE_RESPONSIVE_CHECK = _T("_screen_responsive.jpg");
 static const TCHAR * CONSOLE_LOG_FILE = _T("_console_log.json");
 static const TCHAR * TIMED_EVENTS_FILE = _T("_timed_events.json");
-static const TCHAR * CUSTOM_METRICS_FILE = _T("_metrics.json");
 static const TCHAR * TIMELINE_FILE = _T("_timeline.json");
 static const TCHAR * TRACE_FILE = _T("_trace.json");
 static const TCHAR * CUSTOM_RULES_DATA_FILE = _T("_custom_rules.json");
@@ -77,7 +74,8 @@ Results::Results(TestState& test_state, WptTest& test, Requests& requests,
   , _screen_capture(screen_capture)
   , _saved(false)
   , _dev_tools(dev_tools)
-  , _trace(trace) {
+  , _trace(trace)
+  , currentPage(1)  {
   _file_base = shared_results_file_base;
   _visually_complete.QuadPart = 0;
   WptTrace(loglevel::kFunction, _T("[wpthook] - Results base file: %s"), 
@@ -129,30 +127,25 @@ void Results::Reset(void) {
 -----------------------------------------------------------------------------*/
 void Results::Save(void) {
   WptTrace(loglevel::kFunction, _T("[wpthook] - Results::Save()\n"));
-  if (!_saved) {
+  if (!_saved && _test._log_data) {
     ProcessRequests();
-    if (_test._log_data) {
-      OptimizationChecks checks(_requests, _test_state, _test, _dns);
-      checks.Check();
-      base_page_CDN_ = checks._base_page_CDN;
-      SaveRequests(checks);
-      SaveImages();
-      SaveProgressData();
-      SaveStatusMessages();
-      SavePageData(checks);
-      SaveResponseBodies();
-      SaveConsoleLog();
-      SaveTimedEvents();
-      SaveCustomMetrics();
-      if (_test._timeline) {
-        _dev_tools.SetStartTime(_test_state._start);
-        _dev_tools.Write(_file_base + DEV_TOOLS_FILE);
-      }
-      if (_test._trace)
-        _trace.Write(_file_base + TRACE_FILE);
+    OptimizationChecks checks(_requests, _test_state, _test, _dns);
+    checks.Check();
+    base_page_CDN_ = checks._base_page_CDN;
+    SaveRequests(checks);
+    SaveImages();
+    SaveProgressData();
+    SaveStatusMessages();
+    SavePageData(checks);
+    SaveResponseBodies();
+    SaveConsoleLog();
+    SaveTimedEvents();
+    if (_test._timeline) {
+      _dev_tools.SetStartTime(_test_state._start);
+      _dev_tools.Write(_file_base + DEV_TOOLS_FILE);
     }
-    if (shared_result == -1 || shared_result == 0 || shared_result == 99999)
-      shared_result = _test_state._test_result;
+    if (_test._trace)
+      _trace.Write(_file_base + TRACE_FILE);
     _saved = true;
   }
   WptTrace(loglevel::kFunction, _T("[wpthook] - Results::Save() complete\n"));
@@ -221,21 +214,26 @@ void Results::SaveStatusMessages(void) {
 void Results::SaveImages(void) {
   // save the event-based images
   CxImage image;
-  if (_screen_capture.GetImage(CapturedImage::START_RENDER, image))
-    SaveImage(image, _file_base + IMAGE_START_RENDER, _test._image_quality);
-  if (_screen_capture.GetImage(CapturedImage::DOCUMENT_COMPLETE, image))
-    SaveImage(image, _file_base + IMAGE_DOC_COMPLETE, _test._image_quality);
+  CString page;
+  page.Format(_T("_%d"), currentPage);
+  if (_screen_capture.GetImage(CapturedImage::START_RENDER, image)) {
+    SaveImage(image, _file_base + page + IMAGE_START_RENDER,
+              _test._image_quality);
+  }
+  if (_screen_capture.GetImage(CapturedImage::DOCUMENT_COMPLETE, image)) {
+    SaveImage(image, _file_base + page + IMAGE_DOC_COMPLETE,
+              _test._image_quality);
+  }
   if (_screen_capture.GetImage(CapturedImage::FULLY_LOADED, image)) {
     if (_test._png_screen_shot)
-      image.Save(_file_base + IMAGE_FULLY_LOADED_PNG, CXIMAGE_FORMAT_PNG);
-    SaveImage(image, _file_base + IMAGE_FULLY_LOADED, _test._image_quality);
+      image.Save(_file_base + page + IMAGE_FULLY_LOADED_PNG, CXIMAGE_FORMAT_PNG);
+    SaveImage(image, _file_base + page + IMAGE_FULLY_LOADED,
+              _test._image_quality);
   }
-  if (_screen_capture.GetImage(CapturedImage::RESPONSIVE_CHECK, image)) {
-    SaveImage(image, _file_base + IMAGE_RESPONSIVE_CHECK, _test._image_quality,
-              true);
-  }
+  if (_test._video)
+    SaveVideo();
 
-  SaveVideo();
+  currentPage++;
 }
 
 /*-----------------------------------------------------------------------------
@@ -248,53 +246,49 @@ void Results::SaveVideo(void) {
   POSITION pos = _screen_capture._captured_images.GetHeadPosition();
   while (pos) {
     CapturedImage& image = _screen_capture._captured_images.GetNext(pos);
-    if (image._type != CapturedImage::RESPONSIVE_CHECK) {
-      CxImage * img = new CxImage;
-      if (image.Get(*img)) {
-        DWORD image_time_ms = _test_state.ElapsedMsFromStart(image._capture_time);
-        // we save the frames in increments of 100ms (for now anyway)
-        // round it to the closest interval
-        DWORD image_time = ((image_time_ms + 50) / 100);
-        if (last_image) {
-          RGBQUAD black = {0,0,0,0};
-          if (img->GetWidth() > width)
-            img->Crop(0, 0, img->GetWidth() - width, 0);
-          if (img->GetHeight() > height)
-            img->Crop(0, 0, 0, img->GetHeight() - height);
-          if (img->GetWidth() < width)
-            img->Expand(0, 0, width - img->GetWidth(), 0, black);
-          if (img->GetHeight() < height)
-            img->Expand(0, 0, 0, height - img->GetHeight(), black);
-          if (ImagesAreDifferent(last_image, img)) {
-            if (!_test_state._render_start.QuadPart)
-              _test_state._render_start.QuadPart = image._capture_time.QuadPart;
-            if (_test._video) {
-              _visually_complete.QuadPart = image._capture_time.QuadPart;
-              file_name.Format(_T("%s_progress_%04d.jpg"), (LPCTSTR)_file_base, 
-                                image_time);
-              SaveImage(*img, file_name, _test._image_quality);
-              file_name.Format(_T("%s_progress_%04d.hist"), (LPCTSTR)_file_base, 
-                                image_time);
-              SaveHistogram(*img, file_name);
-            }
-          }
-        } else {
-          width = img->GetWidth();
-          height = img->GetHeight();
-          // always save the first image at time zero
-          file_name = _file_base + _T("_progress_0000.jpg");
+    CxImage * img = new CxImage;
+    if (image.Get(*img)) {
+      DWORD image_time_ms = _test_state.ElapsedMsFromStart(image._capture_time);
+      // we save the frames in increments of 100ms (for now anyway)
+      // round it to the closest interval
+      DWORD image_time = ((image_time_ms + 50) / 100);
+      if (last_image) {
+        RGBQUAD black = {0,0,0,0};
+        if (img->GetWidth() > width)
+          img->Crop(0, 0, img->GetWidth() - width, 0);
+        if (img->GetHeight() > height)
+          img->Crop(0, 0, 0, img->GetHeight() - height);
+        if (img->GetWidth() < width)
+          img->Expand(0, 0, width - img->GetWidth(), 0, black);
+        if (img->GetHeight() < height)
+          img->Expand(0, 0, 0, height - img->GetHeight(), black);
+        if (ImagesAreDifferent(last_image, img)) {
+          _visually_complete.QuadPart = image._capture_time.QuadPart;
+          file_name.Format(_T("%s_%d_progress_%04d.jpg"), (LPCTSTR)_file_base, currentPage,
+                            image_time);
           SaveImage(*img, file_name, _test._image_quality);
-          file_name = _file_base + _T("_progress_0000.hist");
+          file_name.Format(_T("%s_%d_progress_%04d.hist"), (LPCTSTR)_file_base, currentPage,
+                            image_time);
           SaveHistogram(*img, file_name);
         }
-
-        if (last_image)
-          delete last_image;
-        last_image = img;
+      } else {
+		CString page;
+		page.Format(_T("_%d"), currentPage);
+        width = img->GetWidth();
+        height = img->GetHeight();
+        // always save the first image at time zero
+        file_name = _file_base + page + _T("_progress_0000.jpg");
+        SaveImage(*img, file_name, _test._image_quality);
+        file_name = _file_base + page + _T("_progress_0000.hist");
+        SaveHistogram(*img, file_name);
       }
-      else
-        delete img;
+
+      if (last_image)
+        delete last_image;
+      last_image = img;
     }
+    else
+      delete img;
   }
 
   if (last_image)
@@ -316,8 +310,7 @@ bool Results::ImagesAreDifferent(CxImage * img1, CxImage* img2) {
           pixel_bytes = 4;
         DWORD width = max(img1->GetWidth() - RIGHT_MARGIN, 0);
         DWORD height = img1->GetHeight();
-        DWORD row_bytes = img1->GetEffWidth();
-        DWORD row_length = width * (DWORD)(row_bytes / width);
+        DWORD row_length = width * pixel_bytes;
         for (DWORD row = BOTTOM_MARGIN; row < height && !different; row++) {
           BYTE * r1 = img1->GetBits(row);
           BYTE * r2 = img2->GetBits(row);
@@ -333,11 +326,10 @@ bool Results::ImagesAreDifferent(CxImage * img1, CxImage* img2) {
 
 /*-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------*/
-void Results::SaveImage(CxImage& image, CString file, BYTE quality,
-                        bool force_small) {
+void Results::SaveImage(CxImage& image, CString file, BYTE quality) {
   if (image.IsValid()) {
     CxImage img(image);
-    if (force_small || (img.GetWidth() > 600 && img.GetHeight() > 600))
+    if (img.GetWidth() > 600 && img.GetHeight() > 600)
       img.Resample2(img.GetWidth() / 2, img.GetHeight() / 2);
 
     img.SetCodecOption(8, CXIMAGE_FORMAT_JPG);  // optimized encoding
@@ -419,15 +411,15 @@ void Results::SavePageData(OptimizationChecks& checks){
     // build up the string of data fileds for the page result
 
     // Date
-    buff.Format("%02d/%02d/%d\t", _test_state._start_time.wMonth,
+    buff.Format("%d/%d/%d\t", _test_state._start_time.wMonth,
           _test_state._start_time.wDay, _test_state._start_time.wYear);
     result += buff;
     // Time
-    buff.Format("%02d:%02d:%02d\t", _test_state._start_time.wHour,
+    buff.Format("%d:%d:%d\t", _test_state._start_time.wHour,
           _test_state._start_time.wMinute, _test_state._start_time.wSecond);
     result += buff;
     // Event Name
-    result += "\t";
+    result += (CT2A(checks._test.event_name + "\t"));
     // URL
     result += CStringA((LPCSTR)CT2A(_test._navigated_url)) + "\t";
     // Load Time (ms)
@@ -715,9 +707,6 @@ void Results::SavePageData(OptimizationChecks& checks){
       result += buff;
     } else
       result += "\t";
-    // Is Responsive
-    buff.Format("%d\t", _test_state._is_responsive);
-    result += buff;
 
     result += "\r\n";
 
@@ -749,29 +738,22 @@ void Results::ProcessRequests(void) {
   // to eliminate the gap at startup for browser initialization
   if (_test_state._start.QuadPart) {
     LONGLONG new_start = 0;
-    if (_test_state._first_navigate.QuadPart &&
-        _test_state._first_navigate.QuadPart > _test_state._start.QuadPart)
+    if (_test_state._first_navigate.QuadPart)
       new_start = _test_state._first_navigate.QuadPart;
     POSITION pos = _requests._requests.GetHeadPosition();
     while (pos) {
       Request * request = _requests._requests.GetNext(pos);
-      if (request &&
-          (!request->_from_browser || !NativeRequestExists(request))) {
-        request->MatchConnections();
-        if (request->_start.QuadPart &&
-            request->_start.QuadPart > _test_state._start.QuadPart &&
-            (!new_start || request->_start.QuadPart < new_start))
-          new_start = request->_start.QuadPart;
-        if (request->_dns_start.QuadPart &&
-            request->_dns_start.QuadPart > _test_state._start.QuadPart &&
-            (!new_start || request->_dns_start.QuadPart < new_start))
-          new_start = request->_dns_start.QuadPart;
-        if (request->_connect_start.QuadPart &&
-            request->_connect_start.QuadPart > _test_state._start.QuadPart &&
-            (!new_start || request->_connect_start.QuadPart < new_start))
-          new_start = request->_connect_start.QuadPart;
-      }
+      if (request && request->_start.QuadPart && 
+        (!new_start || request->_start.QuadPart < new_start))
+        new_start = request->_start.QuadPart;
     }
+    LONGLONG earliest_dns = _dns.GetEarliest(_test_state._start.QuadPart);
+    if (earliest_dns && (!new_start || earliest_dns < new_start))
+      new_start = earliest_dns;
+    LONGLONG earliest_socket =
+      _sockets.GetEarliest(_test_state._start.QuadPart);
+    if (earliest_socket && (!new_start || earliest_socket < new_start))
+      new_start = earliest_socket;
     if (new_start)
       _test_state._start.QuadPart = new_start;
   }
@@ -783,12 +765,8 @@ void Results::ProcessRequests(void) {
   bool base_page = true;
   base_page_redirects_ = 0;
   adult_site_ = false;
-  LONGLONG new_end = 0;
-  LONGLONG new_first_byte = 0;
-  std::tr1::regex adult_regex("[^0-9a-zA-Z]2257[^0-9a-zA-Z]");
   while (pos) {
     Request * request = _requests._requests.GetNext(pos);
-    WptTrace(loglevel::kFunction, _T("[wpthook] - Processing request %S%S"), (LPCSTR)request->GetHost(), (LPCSTR)request->_request_data.GetObject());
     if (request && 
         (!request->_from_browser || !NativeRequestExists(request))) {
       request->Process();
@@ -828,7 +806,7 @@ void Results::ProcessRequests(void) {
         count_connect_doc_ += doc_increment;
       }
       if (base_page) { 
-        if (result_code == 301 || result_code == 302 || result_code == 401) {
+        if (result_code == 301 || result_code == 302) {
           base_page_redirects_++;
         } else {
           base_page = false;
@@ -846,35 +824,22 @@ void Results::ProcessRequests(void) {
           if (result_code == 200) {
             DataChunk body_chunk = request->_response_data.GetBody(true);
             CStringA body(body_chunk.GetData(), body_chunk.GetLength());
-            if (regex_search((LPCSTR)body, adult_regex) ||
-                body.Find("RTA-5042-1996-1400-1577-RTA") >= 0)
+            if (body.Find("2257") != -1) {
               adult_site_ = true;
+            }
           }
         }
       }
-      new_end = max(new_end, request->_end.QuadPart);
-      new_end = max(new_end, request->_start.QuadPart);
-      new_end = max(new_end, request->_first_byte.QuadPart);
-      new_end = max(new_end, request->_dns_start.QuadPart);
-      new_end = max(new_end, request->_dns_end.QuadPart);
-      new_end = max(new_end, request->_connect_start.QuadPart);
-      new_end = max(new_end, request->_connect_end.QuadPart);
-      if (request->_first_byte.QuadPart &&
-          result_code != 301 && result_code != 302 && result_code != 401 &&
-          (!new_first_byte || request->_first_byte.QuadPart < new_first_byte))
-        new_first_byte = request->_first_byte.QuadPart;
     }
   }
-  if (new_end)
-    _test_state._last_activity.QuadPart = new_end;
-  if (new_first_byte)
-    _test_state._first_byte.QuadPart = new_first_byte;
   _requests.Unlock();
 }
 
 /*-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------*/
 void Results::SaveRequests(OptimizationChecks& checks) {
+  CString page;
+  page.Format(_T("_%d"), currentPage);
   HANDLE file = CreateFile(_file_base + REQUEST_DATA_FILE, GENERIC_WRITE, 0, 
                             NULL, OPEN_ALWAYS, 0, 0);
   if (file != INVALID_HANDLE_VALUE) {
@@ -882,7 +847,7 @@ void Results::SaveRequests(OptimizationChecks& checks) {
     CStringA buff;
     SetFilePointer( file, 0, 0, FILE_END );
 
-    HANDLE headers_file = CreateFile(_file_base + REQUEST_HEADERS_DATA_FILE,
+    HANDLE headers_file = CreateFile(_file_base + page + REQUEST_HEADERS_DATA_FILE,
                             GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
 
     HANDLE custom_rules_file = INVALID_HANDLE_VALUE;
@@ -915,6 +880,7 @@ void Results::SaveRequests(OptimizationChecks& checks) {
         request->_reported = true;
         if (request->_processed) {
           i++;
+          request->SetEventName(checks._test.event_name);  
           SaveRequest(file, headers_file, request, i);
           if (!request->_custom_rules_matches.IsEmpty() && 
               custom_rules_file != INVALID_HANDLE_VALUE) {
@@ -970,18 +936,16 @@ void Results::SaveRequest(HANDLE file, HANDLE headers, Request * request,
   CStringA result;
   CStringA buff;
 
-  WptTrace(loglevel::kFunction, _T("[wpthook] - Saving request %S%S"), (LPCSTR)request->GetHost(), (LPCSTR)request->_request_data.GetObject());
-
   // Date
-  buff.Format("%02d/%02d/%02d\t", _test_state._start_time.wMonth,
+  buff.Format("%d/%d/%d\t", _test_state._start_time.wMonth,
         _test_state._start_time.wDay, _test_state._start_time.wYear);
   result += buff;
   // Time
-  buff.Format("%02d:%02d:%02d\t", _test_state._start_time.wHour,
+  buff.Format("%d:%d:%d\t", _test_state._start_time.wHour,
         _test_state._start_time.wMinute, _test_state._start_time.wSecond);
   result += buff;
   // Event Name
-  result += "\t";
+  result += request->GetEventName()+"\t";
   // IP Address
   struct sockaddr_in addr;
   addr.sin_addr.S_un.S_addr = request->_peer_address;
@@ -1271,7 +1235,7 @@ void Results::SaveConsoleLog(void) {
 /*-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------*/
 void Results::SaveTimedEvents(void) {
-  CStringA log = CT2A(_test_state.GetTimedEventsJSON(), CP_UTF8);
+  CStringA log = CT2A(_test_state.GetTimedEventsJSON());
   if (log.GetLength()) {
     HANDLE file = CreateFile(_file_base + TIMED_EVENTS_FILE, GENERIC_WRITE, 0, 
                               NULL, CREATE_ALWAYS, 0, 0);
@@ -1282,22 +1246,6 @@ void Results::SaveTimedEvents(void) {
     }
   }
 }
-
-/*-----------------------------------------------------------------------------
------------------------------------------------------------------------------*/
-void Results::SaveCustomMetrics(void) {
-  CStringA custom_metrics = CT2A(_test_state._custom_metrics, CP_UTF8);
-  if (custom_metrics.GetLength()) {
-    HANDLE file = CreateFile(_file_base + CUSTOM_METRICS_FILE, GENERIC_WRITE, 0, 
-                              NULL, CREATE_ALWAYS, 0, 0);
-    if (file != INVALID_HANDLE_VALUE) {
-      DWORD written;
-      WriteFile(file, (LPCSTR)custom_metrics, custom_metrics.GetLength(), &written, 0);
-      CloseHandle(file);
-    }
-  }
-}
-
 
 /*-----------------------------------------------------------------------------
   See if a version of the same request exists but not from the browser.
@@ -1316,8 +1264,7 @@ bool Results::NativeRequestExists(Request * browser_request) {
       if (request && 
           !request->_from_browser &&
           !browser_host.CompareNoCase(request->GetHost()) &&
-          !browser_object.CompareNoCase(request->_request_data.GetObject()) &&
-          browser_request->_is_ssl == request->_is_ssl)
+          !browser_object.CompareNoCase(request->_request_data.GetObject()))
           ret = true;
     }
   } else

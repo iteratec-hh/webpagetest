@@ -285,6 +285,7 @@ void OptimizationChecks::CheckImageCompression()
   int total = 0;
   DWORD totalBytes = 0;
   DWORD targetBytes = 0;
+  int imgNum = 0;
 
   _requests.Lock();
   POSITION pos = _requests._requests.GetHeadPosition();
@@ -342,8 +343,20 @@ void OptimizationChecks::CheckImageCompression()
           
             request->_scores._image_compress_total = size;
             request->_scores._image_compress_target = targetRequestBytes;
-            request->_scores._image_compression_score = targetRequestBytes * 100 / size;
+            request->_scores._image_compression_score = 100;
+
+            // If the original was within 10%, then give 100
+            // If it's less than 50% bigger then give 50
+            // More than that is a fail
+            if (targetRequestBytes && targetRequestBytes < size && size > 1400) {
+              double ratio = (double)size / (double)targetRequestBytes;
+              if (ratio >= 1.5)
+                request->_scores._image_compression_score = 0;
+              else if (ratio >= 1.1)
+                request->_scores._image_compression_score = 50;
+            }
           }
+          total += request->_scores._image_compression_score;
         }
       }
     }
@@ -500,6 +513,8 @@ void OptimizationChecks::CheckCDN() {
         isStatic = true;
         request->_scores._static_cdn_score = 0;
       }
+      CStringA host = request->GetHost();
+      host.MakeLower();
       if (IsCDN(request, request->_scores._cdn_provider) && isStatic)
         request->_scores._static_cdn_score = 100;
       if (request->_is_base_page)

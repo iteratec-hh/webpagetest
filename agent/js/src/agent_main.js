@@ -26,7 +26,6 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
-var browser_base = require('browser_base');
 var child_process = require('child_process');
 var fs = require('fs');
 var logger = require('logger');
@@ -34,8 +33,8 @@ var nopt = require('nopt');
 var path = require('path');
 var process_utils = require('process_utils');
 var system_commands = require('system_commands');
+var traffic_shaper = require('traffic_shaper');
 var webdriver = require('selenium-webdriver');
-var web_page_replay = require('web_page_replay');
 var wpt_client = require('wpt_client');
 
 /**
@@ -58,16 +57,15 @@ var knownOpts = {
 var WD_SERVER_EXIT_TIMEOUT = 5000;  // Wait for 5 seconds before force-killing
 
 /**
- * @param {webdriver.promise.ControlFlow} app the ControlFlow for scheduling.
  * @param {wpt_client.Client} client the WebPagetest client.
  * @param {Object} flags from knownOpts.
  * @constructor
  */
-function Agent(app, client, flags) {
+function Agent(client, flags) {
   'use strict';
   this.client_ = client;
   this.flags_ = flags;
-  this.app_ = app;
+  this.app_ = webdriver.promise.controlFlow();
   process_utils.injectWdAppLogging('agent_main', this.app_);
   // The directory to store run result files. Clean it up before+after each run.
   // We want a fixed name, to avoid leaving junk after agent crashes/restarts.
@@ -75,19 +73,12 @@ function Agent(app, client, flags) {
   if (!/^[a-z0-9]*$/i.test(runTempSuffix)) {
     throw new Error('--deviceSerial may contain only letters and digits');
   }
-  this.runTempDir_ = 'runtmp/' + (runTempSuffix || '_wpt');
+  this.runTempDir_ = 'runtmp' + (runTempSuffix ? '_' + runTempSuffix : '');
   this.wdServer_ = undefined;  // The wd_server child process.
-  this.webPageReplay_ = new web_page_replay.WebPageReplay(this.app_,
-      {flags: flags});
-
-  // Create a single (separate) instance of the browser for checking status.
-  this.browser_ = browser_base.createBrowser(this.app_,
-      {flags: flags, task: {}});
+  this.trafficShaper_ = new traffic_shaper.TrafficShaper(this.app_, flags);
 
   this.client_.onStartJobRun = this.startJobRun_.bind(this);
   this.client_.onAbortJob = this.abortJob_.bind(this);
-  this.client_.onMakeReady =
-      this.browser_.scheduleMakeReady.bind(this.browser_);
 }
 /** Public class. */
 exports.Agent = Agent;
@@ -123,14 +114,15 @@ Agent.prototype.startWdServer_ = function(job) {
   this.wdServer_.on('message', function(ipcMsg) {
     logger.debug('got IPC: %s', ipcMsg.cmd);
     if ('done' === ipcMsg.cmd || 'error' === ipcMsg.cmd) {
-      job.testError = job.testError || ipcMsg.testError;
-      job.agentError = job.agentError || ipcMsg.agentError;
-      var isRunFinished = (
-          job.isFirstViewOnly || job.isCacheWarm ||
-          !!job.testError);  // Fail job if first-view fails.
+      var isRunFinished = job.isFirstViewOnly || job.isCacheWarm;
+      if ('error' === ipcMsg.cmd) {
+        job.error = ipcMsg.e;
+        // Error in a first-view run: can't do a repeat run.
+        isRunFinished = true;
+      }
       this.scheduleProcessDone_(ipcMsg, job);
       if (isRunFinished) {
-        this.scheduleCleanup_(job, /*isEndOfJob=*/job.runNumber === job.runs);
+        this.scheduleCleanup_();
       }
       // Do this only at the very end, as it starts a new run of the job.
       this.scheduleNoFault_('Job finished',
@@ -152,16 +144,10 @@ Agent.prototype.startWdServer_ = function(job) {
  */
 Agent.prototype.scheduleProcessDone_ = function(ipcMsg, job) {
   'use strict';
-  this.app_.schedule('Process job results', function() {
+  this.scheduleNoFault_('Process job results', function() {
     if (ipcMsg.devToolsMessages) {
       job.zipResultFiles['devtools.json'] =
           JSON.stringify(ipcMsg.devToolsMessages);
-    }
-    if (ipcMsg.traceFile) {
-      process_utils.scheduleFunctionNoFault(this.app_, 'Read trace file',
-          fs.readFile, ipcMsg.traceFile).then(function(buffer) {
-        job.zipResultFiles['trace.json'] = buffer.toString();
-      });
     }
     if (ipcMsg.screenshots && ipcMsg.screenshots.length > 0) {
       var imageDescriptors = [];
@@ -188,42 +174,24 @@ Agent.prototype.scheduleProcessDone_ = function(ipcMsg, job) {
       }
     }
     if (ipcMsg.videoFile) {
-      process_utils.scheduleFunction(this.app_, 'Read video file',
+      process_utils.scheduleFunctionNoFault(this.app_, 'Read video file',
           fs.readFile, ipcMsg.videoFile).then(function(buffer) {
-        var ext = path.extname(ipcMsg.videoFile);
-        var mimeType = ('.mp4' === ext) ? 'video/mp4' : 'video/avi';
         job.resultFiles.push(new wpt_client.ResultFile(
             wpt_client.ResultFile.ResultType.IMAGE,
-            'video' + ext, mimeType, buffer));
-      }, function(e) {
-        logger.error('Unable to read video file: ' + e.message);
-        job.agentError = job.agentError || e.message;
-      });
+            'video.avi', 'video/avi', buffer));
+      }.bind(this));
     }
     if (ipcMsg.pcapFile) {
-      process_utils.scheduleFunction(this.app_, 'Read pcap file',
+      process_utils.scheduleFunctionNoFault(this.app_, 'Read pcap file',
               fs.readFile, ipcMsg.pcapFile).then(function(buffer) {
         job.resultFiles.push(new wpt_client.ResultFile(
             wpt_client.ResultFile.ResultType.PCAP,
             '.cap', 'application/vnd.tcpdump.pcap', buffer));
-      }, function(e) {
-        logger.error('Unable to read pcap file: ' + e.message);
-        job.agentError = job.agentError || e.message;
       });
       process_utils.scheduleFunctionNoFault(this.app_, 'Delete pcap file',
           fs.unlink, ipcMsg.pcapFile);
     }
-    if (job.isReplay) {
-      this.webPageReplay_.scheduleGetErrorLog().then(function(log) {
-        if (log) {
-          job.zipResultFiles['replay.log'] = log;
-        }
-      }.bind(this));
-    }
-  }.bind(this)).addErrback(function(e) {
-    logger.error('Unable to collect results: ' + e.message);
-    job.agentError = job.agentError || e.message;
-  });
+  }.bind(this));
 };
 
 /**
@@ -236,126 +204,48 @@ Agent.prototype.scheduleProcessDone_ = function(ipcMsg, job) {
  */
 Agent.prototype.startJobRun_ = function(job) {
   'use strict';
-  this.app_.schedule('Start run', function() {
-    // Validate job
-    var script = job.task.script;
-    var url = job.task.url;
-    var pac;
-    try {
-      if (script && !/new\s+(\S+\.)?Builder\s*\(/.test(script)) {
-        var urlAndPac = this.decodeUrlAndPacFromScript_(script);
-        url = urlAndPac.url;
-        pac = urlAndPac.pac;
-        script = undefined;
+  job.isCacheWarm = !!this.wdServer_;
+  logger.info('Running job %s run %d/%d cacheWarm=%s',
+      job.id, job.runNumber, job.runs, job.isCacheWarm);
+  this.scheduleCleanRunTempDir_();
+  if (!this.wdServer_) {
+    this.trafficShaper_.scheduleStart(
+        job.task.bwIn, job.task.bwOut, job.task.latency, job.task.plr);
+    this.startWdServer_(job);
+  }
+  var script = job.task.script;
+  var url = job.task.url;
+  var pac;
+  if (script && !/new\s+(\S+\.)?Builder\s*\(/.test(script)) {
+    var urlAndPac = this.decodeUrlAndPacFromScript_(script);
+    url = urlAndPac.url;
+    pac = urlAndPac.pac;
+    script = undefined;
+  }
+  url = url.trim();
+  if (!((/^https?:\/\//i).test(url))) {
+    url = 'http://' + url;
+  }
+  this.scheduleNoFault_('Send IPC "run"', function() {
+    var message = {
+        cmd: 'run',
+        options: {browserName: job.task.browser},
+        runNumber: job.runNumber,
+        exitWhenDone: job.isFirstViewOnly || job.isCacheWarm,
+        captureVideo: job.captureVideo,
+        capturePackets: job.capturePackets,
+        script: script,
+        url: url,
+        pac: pac,
+        timeout: this.client_.jobTimeout,
+        runTempDir: this.runTempDir_
+      };
+    Object.getOwnPropertyNames(this.flags_).forEach(function(flagName) {
+      if (!message[flagName]) {
+        message[flagName] = this.flags_[flagName];
       }
-      url = url.trim();
-      if (!((/^https?:\/\//i).test(url))) {
-        url = 'http://' + url;
-      }
-    } catch (e) {
-      job.testError = e.message;
-      this.abortJob_(job);
-      return;
-    }
-
-    logger.info('%s run %d%s/%d of job %s',
-        (job.retryError ? 'Retrying' : 'Starting'), job.runNumber,
-        (job.isFirstViewOnly ? '' : (job.isCacheWarm ? 'b' : 'a')),
-        job.runs, job.id);
-
-    if (this.wdServer_ && !job.isCacheWarm) {
-      if (!job.retryError) {
-        throw new Error('Internal error: unclean non-retry first view');
-      }
-      logger.debug('Cleaning before repeat first-view');
-      this.scheduleCleanup_(job, /*isEndOfJob=*/false);
-    }
-    this.scheduleCleanRunTempDir_();
-    if (!job.isCacheWarm) {
-      if (job.isReplay) {
-        if (job.runNumber === 0) {
-          this.webPageReplay_.scheduleStop();  // Force-stop WPR before record..
-          this.webPageReplay_.scheduleRecord();
-        } else if (job.runNumber === 1) {
-          this.webPageReplay_.scheduleReplay();  // Start replay on first run.
-        }
-      } else if (job.runNumber === 1) {  // WPR not requested, so force-stop it.
-        process_utils.scheduleNoFault(
-            this.app_, 'Stop WPR just in case, ignore failures', function() {
-          this.webPageReplay_.scheduleStop();
-        }.bind(this));
-      }
-
-      if (job.isReplay && job.runNumber === 0) {
-        this.stopTrafficShaper_();  // Don't shape the recording.
-      } else if (job.runNumber === 1) {
-        if (this.isTrafficShaping_(job)) {
-          this.startTrafficShaper_(job);  // Start shaping.
-        } else if (!job.isReplay) {
-          this.stopTrafficShaper_();  // Force-stop the shaper.
-        }
-      }
-
-      this.app_.schedule('Start WD Server',
-          this.startWdServer_.bind(this, job));
-    }
-    this.app_.schedule('Send IPC "run"', function() {
-      // Copy our flags and task
-      var flags = {};
-      Object.getOwnPropertyNames(this.flags_).forEach(function(flagName) {
-        flags[flagName] = this.flags_[flagName];
-      }.bind(this));
-      var task = {};
-      Object.getOwnPropertyNames(job.task).forEach(function(key) {
-        task[key] = job.task[key];
-      }.bind(this));
-      // Override some task fields:
-      if (!!script) {
-        task.script = script;
-      } else {
-        delete task.script;
-      }
-      if (!!url) {
-        task.url = url;
-      }
-      if (!!pac) {
-        task.pac = pac;
-      }
-      var message = {
-          cmd: 'run',
-          runNumber: job.runNumber,
-          isCacheWarm: job.isCacheWarm,
-          exitWhenDone: job.isFirstViewOnly || job.isCacheWarm,
-          timeout: this.client_.jobTimeout,
-          runTempDir: this.runTempDir_,
-          flags: flags,
-          task: task
-        };
-      this.wdServer_.send(message);
     }.bind(this));
-  }.bind(this)).addErrback(function(e) {
-    logger.error('Unable to start job: ' + e.message);
-    job.agentError = job.agentError || e.message;
-    this.abortJob_(job);
-  }.bind(this));
-};
-
-/**
- * Creates the specified directory if it doesn't already exist.
- * @param {string} dir Directory name.
- * @private
- */
-Agent.prototype.scheduleMakeDirs_ = function(dir) {
-  'use strict';
-  process_utils.scheduleFunction(this.app_, 'Make dirs', fs.exists, dir).then(
-      function(exists) {
-    if (!exists) {
-      var sep = dir.lastIndexOf('/');
-      if (sep > 0) {
-        this.scheduleMakeDirs_(dir.substring(0, sep));  // Recurse.
-      }
-      process_utils.scheduleFunction(this.app_, 'Make dir', fs.mkdir, dir);
-    }
+    this.wdServer_.send(message);
   }.bind(this));
 };
 
@@ -366,14 +256,21 @@ Agent.prototype.scheduleMakeDirs_ = function(dir) {
  */
 Agent.prototype.scheduleCleanRunTempDir_ = function() {
   'use strict';
-  this.scheduleMakeDirs_(this.runTempDir_);
-  process_utils.scheduleFunction(this.app_, 'Tmp read',
-      fs.readdir, this.runTempDir_).then(function(files) {
-    files.forEach(function(fileName) {
-      var filePath = path.join(this.runTempDir_, fileName);
-      process_utils.scheduleFunctionNoFault(this.app_, 'Delete ' + filePath,
-          fs.unlink, filePath);
-    }.bind(this));
+  process_utils.scheduleFunctionNoFault(this.app_, 'Tmp check',
+      fs.exists, this.runTempDir_).then(function(exists) {
+    if (exists) {
+      process_utils.scheduleFunction(this.app_, 'Tmp read',
+          fs.readdir, this.runTempDir_).then(function(files) {
+        files.forEach(function(fileName) {
+          var filePath = path.join(this.runTempDir_, fileName);
+          process_utils.scheduleFunctionNoFault(this.app_, 'Delete ' + filePath,
+              fs.unlink, filePath);
+        }.bind(this));
+      }.bind(this));
+    } else {
+      process_utils.scheduleFunction(this.app_, 'Tmp create',
+          fs.mkdir, this.runTempDir_);
+    }
   }.bind(this));
 };
 
@@ -419,8 +316,7 @@ ScriptError.prototype = new Error();
  */
 Agent.prototype.decodeUrlAndPacFromScript_ = function(script) {
   'use strict';
-  // Assign nulls to appease 'possibly uninitialized' warnings.
-  var fromHost = null, toHost = null, proxy = null, url = null;
+  var fromHost, toHost, proxy, url;
   script.split('\n').forEach(function(line, lineNumber) {
     line = line.trim();
     if (!line || 0 === line.indexOf('//')) {
@@ -470,50 +366,39 @@ Agent.prototype.decodeUrlAndPacFromScript_ = function(script) {
 Agent.prototype.abortJob_ = function(job) {
   'use strict';
   if (this.wdServer_) {
-    this.wdServer_.removeAllListeners('message');
-    this.wdServer_.send({cmd: 'abort'});
+    this.scheduleNoFault_('Remove message listener',
+      this.wdServer_.removeAllListeners.bind(this.wdServer_, 'message'));
+    this.scheduleNoFault_('Send IPC "abort"',
+        this.wdServer_.send.bind(this.wdServer_, {cmd: 'abort'}));
   }
-  this.scheduleCleanup_(job, /*isEndOfJob=*/true);
-  this.scheduleNoFault_('Abort job',
+  this.scheduleCleanup_();
+  this.scheduleNoFault_('Timed out job finished',
       job.runFinished.bind(job, /*isRunFinished=*/true));
 };
 
 /**
  * Kill the wdServer and traffic shaper.
  *
- * @param {Job} job
- * @param {boolean} isEndOfJob whether we are done with the entire job.
  * @private
  */
-Agent.prototype.scheduleCleanup_ = function(job, isEndOfJob) {
+Agent.prototype.scheduleCleanup_ = function() {
   'use strict';
-  process_utils.scheduleNoFault(this.app_, 'Stop wd_server', function() {
-    if (this.wdServer_) {
-      this.wdServer_.removeAllListeners('message');
-      process_utils.scheduleWait(this.app_, this.wdServer_, 'wd_server',
-            WD_SERVER_EXIT_TIMEOUT).then(function() {
-        // This assumes a clean exit with no zombies
+  if (this.wdServer_) {
+    this.scheduleNoFault_('Remove message listener',
+      this.wdServer_.removeAllListeners.bind(this.wdServer_, 'message'));
+    process_utils.scheduleWait(this.app_, this.wdServer_, 'wd_server',
+          WD_SERVER_EXIT_TIMEOUT).then(function() {
+      // This assumes a clean exit with no zombies
+      this.wdServer_ = undefined;
+    }.bind(this), function() {
+      process_utils.scheduleKillTree(this.app_, 'Kill wd_server',
+          this.wdServer_);
+      this.app_.schedule('undef wd_server', function() {
         this.wdServer_ = undefined;
-      }.bind(this), function() {
-        process_utils.scheduleKillTree(this.app_, 'Kill wd_server',
-            this.wdServer_);
-        this.app_.schedule('undef wd_server', function() {
-          this.wdServer_ = undefined;
-        }.bind(this));
       }.bind(this));
-    }
-  }.bind(this));
-  if (isEndOfJob) {
-    if (job.isReplay) {
-      process_utils.scheduleNoFault(
-          this.app_, 'Stop WPR', function() {
-        this.webPageReplay_.scheduleStop();
-      }.bind(this));
-    }
-    if (this.isTrafficShaping_(job)) {
-      this.stopTrafficShaper_();
-    }
+    }.bind(this));
   }
+  this.trafficShaper_.scheduleStop();
   if (1 === parseInt(this.flags_.killall || '0', 10)) {
     // Kill all processes for this user, except our own process and parent(s).
     //
@@ -528,7 +413,7 @@ Agent.prototype.scheduleCleanup_ = function(job, isEndOfJob) {
       var pi; // Declare outside the loop, to avoid a jshint warning
       while (pid) {
         pi = undefined;
-        for (var i = 0; i < processInfos.length; ++i) {
+        for (var i in processInfos) {
           if (processInfos[i].pid === pid) {
             pi = processInfos.splice(i, 1)[0];
             logger.debug('Not killing user %s pid=%s: %s %s', process.env.USER,
@@ -545,104 +430,9 @@ Agent.prototype.scheduleCleanup_ = function(job, isEndOfJob) {
         process_utils.scheduleKillAll(
             this.app_, 'Kill dangling pids', processInfos);
       }
-    }.bind(this), function(e) {
-      logger.error('Unable to killall pids: ' + e.message);
-    });
+    }.bind(this));
   }
   this.scheduleCleanRunTempDir_();
-};
-
-/**
- * Schedules a traffic shaper command.
- *
- * The "--trafficShaper" script defaults to "./ipfw_config".  If the value
- * contains commas, the comma-separated values are passes as additional
- * command arguments (e.g. "my_ipfw,--x,123").
- *
- * @param {string} command 'set', 'get', or 'clear'.
- * @param {Object.<string>=} opts
- *    #param {string=} down_bw input bandwidth in bits/s (>= 0)
- *    #param {string=} down_delay input delay in ms (>= 0)
- *    #param {string=} down_plr input packet loss rate [0..1].
- *    #param {string=} up_bw output bandwidth in bits/s (>= 0)
- *    #param {string=} up_delay output delay in ms (>= 0)
- *    #param {string=} up_plr output packet loss rate [0..1].
- *    #param {string=} device deviceSerial id (undefined for desktops).
- *    #param {string=} address network address (IP or MAC).
- * @return {webdriver.promise.Promise} The scheduled promise.
- * @private
- */
-Agent.prototype.trafficShaper_ =
-    function(command, opts) {  // jshint unused:false
-  'use strict';
-  var cmd = this.flags_.trafficShaper || './ipfw_config';
-  var args = [];
-  if (0 !== cmd.indexOf(',')) {
-    // support 'proxy,--url,http://foo:8084,ipfw_config'
-    args = cmd.split(',');  // ignore escaping literal ','s for now
-    cmd = args.shift();
-  }
-  args.push(command);
-  Object.keys(opts || {}).forEach(function(key) {
-    if (undefined !== opts[key]) {
-      args.push('--' + key, opts[key]);
-    }
-  }.bind(this));
-  if (!(opts && 'device' in opts) && this.flags_.deviceSerial) {
-    args.push('--device', this.flags_.deviceSerial);
-  }
-  if (!(opts && 'address' in opts) && this.flags_.deviceAddr) {
-    args.push('--address', this.flags_.deviceAddr);
-  }
-  return process_utils.scheduleExec(this.app_, cmd, args);
-};
-
-/**
- * @param {Job} job
- * @return {boolean} true if the job has traffic shaping.
- * @private
- */
-Agent.prototype.isTrafficShaping_ = function(job) {
-  'use strict';
-  return (job.task.bwIn || job.task.bwOut || job.task.latency || job.task.plr);
-};
-
-/**
- * Starts the traffic shaper.
- *
- * @param {Job} job
- * @private
- */
-Agent.prototype.startTrafficShaper_ = function(job) {
-  'use strict';
-  var halfDelay = Math.floor(job.task.latency / 2);
-  var opts = {
-      down_bw: job.task.bwIn && (1000 * job.task.bwIn),
-      down_delay: job.task.latency && halfDelay,
-      down_plr: job.task.plr && 0,
-      up_bw: job.task.bwOut && (1000 * job.task.bwOut),
-      up_delay: job.task.latency && job.task.latency - halfDelay,
-      up_plr: job.task.plr && job.task.plr  // All loss on out.
-    };
-  this.trafficShaper_('set', opts).addErrback(function(e) {
-    var stderr = (e.stderr || e.message || '').trim();
-    job.agentError = job.agentError || stderr;
-    throw new Error('Unable to configure traffic shaping:\n' + stderr + '\n' +
-      ' To disable traffic shaping, re-run your test with ' +
-      '"Advanced Settings > Test Settings > Connection = Native Connection"' +
-      ' or add "connectivity=WiFi" to this location\'s WebPagetest config.');
-  }.bind(this));
-};
-
-/**
- * Stops the traffic shaper.
- * @private
- */
-Agent.prototype.stopTrafficShaper_ = function() {
-  'use strict';
-  this.trafficShaper_('clear').addErrback(function(/*e*/) {
-    logger.debug('Ignoring failed trafficShaper clear');
-  }.bind(this));
 };
 
 /**
@@ -679,9 +469,8 @@ exports.main = function(flags) {
   }
   exports.setSystemCommands();
   delete flags.argv; // Remove nopt dup
-  var app = webdriver.promise.controlFlow();
-  var client = new wpt_client.Client(app, flags);
-  var agent = new Agent(app, client, flags);
+  var client = new wpt_client.Client(flags);
+  var agent = new Agent(client, flags);
   agent.run();
 };
 

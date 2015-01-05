@@ -36,6 +36,7 @@ public:
   void SetStartTime(LARGE_INTEGER &start_time);
   void AddRawEvents(CStringA data);
   void AddEvent(LPCSTR method, CStringA data, bool at_head = false);
+  void AddPaintEvent(int x, int y, int width, int height);
   void RequestStart(double id, CStringA pageUrl, CStringA url, CStringA method,
                     CAtlArray<CString> &headers);
 

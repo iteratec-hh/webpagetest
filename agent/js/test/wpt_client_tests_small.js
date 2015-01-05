@@ -29,13 +29,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 var events = require('events');
 var http = require('http');
 var logger = require('logger');
-var process_utils = require('process_utils');
 var should = require('should');
 var sinon = require('sinon');
 var Stream = require('stream');
 var test_utils = require('./test_utils.js');
 var wpt_client = require('wpt_client');
-var webdriver = require('selenium-webdriver');
 var Zip = require('node-zip');
 
 var WPT_SERVER = process.env.WPT_SERVER || 'http://localhost:8888';
@@ -53,18 +51,12 @@ describe('wpt_client small', function() {
   'use strict';
 
   var sandbox;
-  var app;
 
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
     test_utils.fakeTimers(sandbox);
     // Re-create stub process for each test to avoid accumulating listeners.
     wpt_client.process = new events.EventEmitter();
-
-    // Create a new ControlFlow for each test.
-    app = new webdriver.promise.ControlFlow();
-    webdriver.promise.setDefaultFlow(app);
-    process_utils.injectWdAppLogging('agent_main', app);
   });
 
   afterEach(function() {
@@ -75,7 +67,7 @@ describe('wpt_client small', function() {
   });
 
   it('should call client.finishRun_ when job done', function() {
-    var client = new wpt_client.Client(app, {serverUrl: 'base',
+    var client = new wpt_client.Client({serverUrl: 'base',
         location: 'location', apiKey: 'apiKey', jobTimeout: 0});
     sandbox.mock(client).expects('finishRun_').once();
 
@@ -84,7 +76,7 @@ describe('wpt_client small', function() {
   });
 
   it('should be able to timeout a job', function() {
-    var client = new wpt_client.Client(app, {serverUrl: 'server',
+    var client = new wpt_client.Client({serverUrl: 'server',
         location: 'location', jobTimeout: 2});
     var isTimedOut = false;
     test_utils.stubLog(sandbox, function(
@@ -105,7 +97,7 @@ describe('wpt_client small', function() {
   });
 
   it('should call onStartJobRun when a new job is processed', function() {
-    var client = new wpt_client.Client(app, {serverUrl: 'url'});
+    var client = new wpt_client.Client({serverUrl: 'url'});
     client.onStartJobRun = function() {};
     var startJobRunSpy = sandbox.spy(client, 'onStartJobRun');
 
@@ -119,10 +111,9 @@ describe('wpt_client small', function() {
       return new events.EventEmitter();
     });
 
-    var client = new wpt_client.Client(app, {serverUrl: 'http://server',
+    var client = new wpt_client.Client({serverUrl: 'http://server',
         location: 'Test'});
     client.requestNextJob_();
-    test_utils.tickUntilIdle(app, sandbox);
 
     should.ok(http.get.calledOnce);
     should.equal(http.get.firstCall.args[0].href,
@@ -132,7 +123,7 @@ describe('wpt_client small', function() {
   it('should submit right number of result files', function() {
     var submitResultFiles = function(numFiles, callback) {
       var filesSubmitted = 0;
-      var client = new wpt_client.Client(app, {serverUrl: 'server',
+      var client = new wpt_client.Client({serverUrl: 'server',
           location: 'location'});
 
       sandbox.stub(client, 'postResultFile_',
@@ -169,7 +160,7 @@ describe('wpt_client small', function() {
   });
 
   it('should submit the right files', function() {
-    var client = new wpt_client.Client(app,
+    var client = new wpt_client.Client(
         {serverUrl: 'server', location: 'location'});
     var content = 'fruits of my labour';
     var job = {
@@ -214,25 +205,18 @@ describe('wpt_client small', function() {
       return new events.EventEmitter();
     });
 
-    var client = new wpt_client.Client(app, {serverUrl: WPT_SERVER,
-        location: LOCATION});
-    logger.info('run(true)');
+    var client = new wpt_client.Client({serverUrl: 'url'});
     client.run(true);
-    test_utils.tickUntilIdle(app, sandbox);
-    logger.info('emit(done)');
     client.emit('done');
-    test_utils.tickUntilIdle(app, sandbox);
-    logger.info('emit(nojob)');
     client.emit('nojob');
     // Force nojob's delayed GET to run.
-    sandbox.clock.tick(wpt_client.NO_JOB_PAUSE + 1);
-    test_utils.tickUntilIdle(app, sandbox);
+    sandbox.clock.tick(wpt_client.NO_JOB_PAUSE);
     should.equal(getCount, 3);
   });
 
   it('should emit shutdown if it receives shutdown as the next job response',
       function() {
-    var client = new wpt_client.Client(app, {serverUrl: WPT_SERVER,
+    var client = new wpt_client.Client({serverUrl: WPT_SERVER,
         location: LOCATION});
 
     var shutdownSpy = sandbox.spy();
@@ -241,7 +225,6 @@ describe('wpt_client small', function() {
     test_utils.stubHttpGet(sandbox, new RegExp('^' + WPT_SERVER), 'shutdown');
 
     client.run(/*forever=*/true);
-    test_utils.tickUntilIdle(app, sandbox);
     should.ok(shutdownSpy.calledOnce);
   });
 
@@ -250,15 +233,14 @@ describe('wpt_client small', function() {
 
     test_utils.stubLog(sandbox, function(
          levelPrinter, levelName, stamp, source, message) {
-      return message.match(new RegExp('Finished\\srun\\s\\d+[ab]/' +
-          task.runs + '\\s(.*\\s)?of\\s(finished\\s)?job\\s' +
-          task['Test ID'] + '(\\s|$)'));
+      return message.match(new RegExp('Finished\\srun\\s\\d+/' +
+          task.runs + '\\s(.*\\s)?of\\sjob\\s' + task['Test ID'] +
+          '(\\s|$)'));
     });
 
     var numJobRuns = 0;
 
-    var client = new wpt_client.Client(app, {serverUrl: 'url',
-        location: 'test'});
+    var client = new wpt_client.Client({serverUrl: 'url', location: 'test'});
     var doneSpy = sandbox.spy();
     client.on('done', doneSpy);
 
@@ -295,15 +277,16 @@ describe('wpt_client small', function() {
       options.path.should.match(/\/work\/workdone/);
       responseCb(postResponse);
       return {  // Fake request object
-        'end': function(/*body, encoding*/) {
+        end: function(/*body, encoding*/) {
           postResponse.emit('end');  // No data in the response
         },
-        'on': function() {}
+        on: function() {
+        }
       };
     });
 
     client.run(/*forever=*/false);
-    sandbox.clock.tick(100);
+    sandbox.clock.tick(10);
     should.ok(doneSpy.calledOnce);
     should.equal(6, numJobRuns);
   });
@@ -314,15 +297,14 @@ describe('wpt_client small', function() {
     test_utils.stubLog(sandbox, function(
          levelPrinter, levelName, stamp, source, message) {
       return ((/^Unhandled\sexception\s/).test(message) ||
-          (/^(Finished|Failed)\srun\s/).test(message));
+          (/^Finished\srun\s/).test(message));
     });
-    var client = new wpt_client.Client(app, {serverUrl: 'url'});
+    var client = new wpt_client.Client({serverUrl: 'url'});
     client.onStartJobRun = function() {};  // Do nothing, wait for exception.
     sandbox.stub(client, 'postResultFile_',
         function(job, resultFile, fields, callback) {
       logger.debug('stub postResultFile_ f=%j fields=%j', resultFile, fields);
-      should.equal(job.agentError, undefined);
-      should.equal(job.testError, e.message);
+      should.equal(job.error, e.message);
       var isFoundErrorField = false;
       fields.forEach(function(nameValue) {
         if ('error' === nameValue[0]) {
@@ -335,8 +317,7 @@ describe('wpt_client small', function() {
     var doneSpy = sandbox.spy();
     client.on('done', function(job) {
       logger.debug('client done');
-      should.equal(job.agentError, undefined);
-      should.equal(job.testError, e.message);
+      should.equal(job.error, e.message);
       // Second uncaught exception outside of job processing is ignored.
       // Spy on logger.critical just for this exception and make sure
       // that we log the message "outside of job".
@@ -353,64 +334,6 @@ describe('wpt_client small', function() {
     logger.debug('emitting uncaught');
     // First uncaught exception finishes the job.
     wpt_client.process.emit('uncaughtException', e);
-    test_utils.tickUntilIdle(app, sandbox);
     should.ok(doneSpy.calledOnce);
   });
-
-  function testSignal_(signal_name, expectedStartCount, expectedAbortCount) {
-    // Creates a 2-run uncached+cached job, emits the given signal in the
-    // middle of the first run's uncached load, then verifies that the job
-    // exits with the expected startRun and abort counts.
-    var startSpy = sandbox.spy();
-    var submitSpy = sandbox.spy();
-    var abortSpy = sandbox.spy();
-    var exitSpy = sandbox.spy();
-
-    var client = new wpt_client.Client(app, {serverUrl: 'url'});
-    test_utils.stubLog(sandbox, function(
-         levelPrinter, levelName, stamp, source, message) {
-      return ((/^Received \S+, will exit after /).test(message) ||
-          (/^Aborting job /).test(message) ||
-          (/^(Finished|Failed) run \d+/).test(message) ||
-          (/^Exiting due to /).test(message));
-    });
-    client.onStartJobRun = function(job) {
-      startSpy();
-      if (1 === job.runNumber && !job.isCacheWarm) {
-        global.setTimeout(function() {
-          wpt_client.process.emit(signal_name);  // Signal on first iteration
-        }, 5);
-      }
-      global.setTimeout(function() {
-        if (!abortSpy.called && !exitSpy.called) {
-          var isRunFinished = job.isFirstViewOnly || job.isCacheWarm;
-          job.isCacheWarm = !isRunFinished;  // Set for next iteration
-          job.runFinished(isRunFinished);
-        }
-      }, 10);
-    };
-    client.onAbortJob = function(job) {
-      abortSpy();
-      job.runFinished(true);
-    };
-    sandbox.stub(client, 'submitResult_', function(
-        job, isJobFinished, callback) {
-      submitSpy();
-      callback();
-    });
-    wpt_client.process.exit = exitSpy;
-    client.processJobResponse_('{"Test ID": "gaga", "runs": 2, "fvonly": 0}');
-    sandbox.clock.tick(100);
-
-    should.ok(exitSpy.calledOnce);
-    should.equal(startSpy.callCount, expectedStartCount);
-    should.equal(submitSpy.callCount, startSpy.callCount);
-    should.equal(abortSpy.callCount, expectedAbortCount);
-  }
-
-  it('should handle SIGQUIT', testSignal_.bind(undefined, 'SIGQUIT', 4, 0));
-  it('should handle SIGABRT', testSignal_.bind(undefined, 'SIGABRT', 2, 0));
-  it('should handle SIGTERM', testSignal_.bind(undefined, 'SIGTERM', 1, 1));
-  it('should handle SIGINT', testSignal_.bind(undefined, 'SIGINT', 1, 1));
-
 });

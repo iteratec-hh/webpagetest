@@ -17,7 +17,6 @@ public:
   void  ReportDOMElementCount(DWORD count);
   void  ReportNavigationTiming(CString timing);
   void  ReportUserTiming(CString events);
-  void  ReportCustomMetrics(CString custom_metrics);
 
 private:
   bool HttpGet(CString url, CString& response);

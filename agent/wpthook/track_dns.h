@@ -58,8 +58,6 @@ public:
   struct in_addr	_override_addr;
 };
 
-typedef CAtlList<DWORD> DNSAddressList;
-
 class DnsHostAddresses {
 public:
   DnsHostAddresses(){}
@@ -83,8 +81,8 @@ public:
     if (!found)
       addresses_.AddTail(address);
   }
-  CString         name_;
-  DNSAddressList  addresses_;
+  CString          name_;
+  CAtlList<DWORD>  addresses_;
 };
 
 class CDNEntry {
@@ -114,9 +112,6 @@ public:
   void Reset();
   bool Claim(CString name, ULONG addr, LARGE_INTEGER before,
              LARGE_INTEGER& start, LARGE_INTEGER& end);
-  void ClaimAll();
-  bool Find(CString name, DNSAddressList &addresses,
-            LARGE_INTEGER& start, LARGE_INTEGER& end);
   LONGLONG  GetEarliest(LONGLONG& after);
   void AddAddress(CString host, DWORD address);
   int GetAddressCount(CString host);

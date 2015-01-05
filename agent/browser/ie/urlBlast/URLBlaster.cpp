@@ -253,6 +253,7 @@ void CURLBlaster::ThreadProc(void)
 						if( Launch(preLaunch) )
 						{
 							LaunchBrowser();
+              dlg.SetStatus(_T("Uploading test run..."));
               
 							// record the cleared cache view
 							if( urlManager->RunRepeatView(info) ) {
@@ -662,7 +663,7 @@ void CURLBlaster::ClearCache(void)
     }
   }
   
-  // This magic value is the combination of the following bitflags:
+    // This magic value is the combination of the following bitflags:
   // #define CLEAR_HISTORY         0x0001 // Clears history
   // #define CLEAR_COOKIES         0x0002 // Clears cookies
   // #define CLEAR_CACHE           0x0004 // Clears Temporary Internet Files folder
@@ -681,11 +682,7 @@ void CURLBlaster::ClearCache(void)
   // #define CLEAR_PRESERVE_FAVORITES 0x2000 // Preserves cached data for "favorite" websites
 
   // Use the command-line version of cache clearing in case WinInet didn't work
-  // 6655 = 0x19FF
-  HANDLE hAsync = NULL;
-  Launch(_T("RunDll32.exe InetCpl.cpl,ClearMyTracksByProcess 6655"), &hAsync);
-  if (hAsync)
-    CloseHandle(hAsync);
+  Launch(_T("RunDll32.exe InetCpl.cpl,ClearMyTracksByProcess 6655"));
 
 	cached = false;
 }
@@ -1065,17 +1062,6 @@ void CURLBlaster::ConfigurePagetest(void)
       RegSetValueEx(hKey, _T("keepua"), 0, REG_DWORD, (const LPBYTE)&info.keepua, sizeof(info.keepua));
       RegSetValueEx(hKey, _T("minimumDuration"), 0, REG_DWORD, (const LPBYTE)&info.minimumDuration, sizeof(info.minimumDuration));
       RegSetValueEx(hKey, _T("customRules"), 0, REG_SZ, (const LPBYTE)(LPCTSTR)info.customRules, (info.customRules.GetLength() + 1) * sizeof(TCHAR));
-			RegDeleteValue(hKey, _T("customMetricsFile"));
-      if (info.customMetrics.GetLength() &&
-          info.customMetricsFile.GetLength()) {
-        HANDLE hFile = CreateFile(info.customMetricsFile, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-        if (hFile != INVALID_HANDLE_VALUE) {
-          DWORD dwBytes;
-          WriteFile(hFile, (LPCSTR)info.customMetrics, info.customMetrics.GetLength(), &dwBytes, 0);
-          CloseHandle(hFile);
-          RegSetValueEx(hKey, _T("customMetricsFile"), 0, REG_SZ, (const LPBYTE)(LPCTSTR)info.customMetricsFile, (info.customMetricsFile.GetLength() + 1) * sizeof(TCHAR));
-        }
-      }
 
 		  // Add the blockads bit.
 		  RegSetValueEx(hKey, _T("blockads"), 0, REG_DWORD, (const LPBYTE)&info.blockads, sizeof(info.blockads));
@@ -1411,23 +1397,6 @@ void CURLBlaster::EncodeVideo(void)
 		else
 			log.Trace(_T("Execution failed '%s'"), (LPCTSTR)cmd);
 	}
-	
-	// terminate any stray x264.exe processes
-	WTS_PROCESS_INFO * proc = NULL;
-	DWORD count = 0;
-	if( WTSEnumerateProcesses(WTS_CURRENT_SERVER_HANDLE, 0, 1, &proc, &count) ) {
-		for( DWORD i = 0; i < count; i++ ) {
-			if( !lstrcmpi(PathFindFileName(proc[i].pProcessName), _T("x264.exe")) ) {
-				HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, proc[i].ProcessId);
-				if( hProc ) {
-					TerminateProcess(hProc, 0);
-					CloseHandle(hProc);
-				}
-			}
-		}
-		
-		WTSFreeMemory(proc);
-	}
 }
 
 /*-----------------------------------------------------------------------------
@@ -1591,13 +1560,8 @@ void CURLBlaster::FlushDNS()
 	else
 		log.Trace(_T("Failed to load dnsapi.dll"));
 
-  if( !flushed ) {
-    HANDLE hProc = NULL;
-		Launch(_T("ipconfig.exe /flushdns"), &hProc);
-    // Let it run asynchronously.  It will complete well before the browser launches
-    if (hProc)
-      CloseHandle(hProc);
-  }
+	if( !flushed )
+		Launch(_T("ipconfig.exe /flushdns"));
 }
 
 /*-----------------------------------------------------------------------------

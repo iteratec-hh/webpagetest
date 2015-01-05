@@ -37,7 +37,7 @@ public:
              BrowserSettings& browser, CIpfw &ipfw);
   ~WebBrowser(void);
 
-  bool RunAndWait();
+  bool RunAndWait(bool &critical_error);
   void ClearUserData();
 
 private:
@@ -57,8 +57,6 @@ private:
   CIpfw&          _ipfw;
 
   HANDLE        _browser_process;
-  HANDLE  _browser_started_event;
-  HANDLE  _browser_done_event;
 
   CRITICAL_SECTION  cs;
   SECURITY_ATTRIBUTES null_dacl;

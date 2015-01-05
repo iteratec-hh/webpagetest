@@ -13,11 +13,9 @@
 STDMETHODIMP WptBHO::SetSite(IUnknown *pUnkSite) {
   AtlTrace(_T("[WptBHO] SetSite\n"));
   if (pUnkSite) {
-    if (!_web_browser) {
-      _web_browser = pUnkSite;
-      _wpt.InstallHook();
-      DispEventAdvise(pUnkSite, &DIID_DWebBrowserEvents2);
-    }
+    _web_browser = pUnkSite;
+    _wpt.InstallHook();
+    DispEventAdvise(pUnkSite, &DIID_DWebBrowserEvents2);
   } else {
     DispEventUnadvise(_web_browser, &DIID_DWebBrowserEvents2);
     _wpt.Stop();

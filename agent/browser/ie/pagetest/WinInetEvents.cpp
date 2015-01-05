@@ -1111,7 +1111,12 @@ void CWinInetEvents::OnDataReceived(HINTERNET hFile, LPVOID buff, DWORD len)
 
 			CString mime(w->response.contentType);
 			mime.MakeLower();
-			if (mime.Find(_T("video/")) == -1) {
+			if( (mime.Find(_T("text/")) >= 0)
+				|| (mime.Find(_T("javascript")) >= 0)
+				|| (mime.Find(_T("json")) >= 0)
+				|| (mime.Find(_T("image/")) >= 0)
+			  )
+			{
 				// add the content to our internal buffer
 				DWORD oldLen = w->bodyLen;
 				w->bodyLen += len;

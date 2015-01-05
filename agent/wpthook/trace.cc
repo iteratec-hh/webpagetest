@@ -60,12 +60,10 @@ bool Trace::Write(CString file) {
       DWORD bytes_written;
       ok = true;
       bool first = true;
-      CStringA event_string = "{\"traceEvents\": [";
-      WriteFile(file_handle, (LPCSTR)event_string, event_string.GetLength(), &bytes_written, 0);
+      WriteFile(file_handle, "[", 1, &bytes_written, 0);
       POSITION pos = events_.GetHeadPosition();
       while (pos) {
-        event_string = events_.GetNext(pos);
-        event_string.Trim("[]");
+        CStringA event_string = events_.GetNext(pos);
         if (event_string.GetLength()) {
           if (first)
             first = false;
@@ -75,8 +73,7 @@ bool Trace::Write(CString file) {
                     event_string.GetLength(), &bytes_written, 0);
         }
       }
-      event_string = "]}";
-      WriteFile(file_handle, (LPCSTR)event_string, event_string.GetLength(), &bytes_written, 0);
+      WriteFile(file_handle, "]", 1, &bytes_written, 0);
       CloseHandle(file_handle);
     }
   }

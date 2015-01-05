@@ -73,6 +73,7 @@ private:
   CStringA      base_page_server_rtt_;
   int           base_page_address_count_;
   bool          adult_site_;
+  int           currentPage;
 
   int count_connect_;
   int count_connect_doc_;
@@ -100,14 +101,12 @@ private:
   void SaveVideo(void);
   void SaveProgressData(void);
   void SaveStatusMessages(void);
-  void SaveImage(CxImage& image, CString file, BYTE quality,
-                 bool force_small = false);
+  void SaveImage(CxImage& image, CString file, BYTE quality);
   bool ImagesAreDifferent(CxImage * img1, CxImage* img2);
   CStringA FormatTime(LARGE_INTEGER t);
   void SaveResponseBodies(void);
   void SaveConsoleLog(void);
   void SaveTimedEvents(void);
-  void SaveCustomMetrics(void);
   void SaveHistogram(CxImage& image, CString file);
   bool NativeRequestExists(Request * browser_request);
 };

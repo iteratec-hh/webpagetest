@@ -2,13 +2,12 @@
 #include "wpt_test_hook.h"
 #include "shared_mem.h"
 #include "wpthook.h"
-#include "test_state.h"
+
 
 /*-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------*/
-WptTestHook::WptTestHook(WptHook& hook, TestState& test_state, DWORD timeout):
-  hook_(hook)
-  , test_state_(test_state) {
+WptTestHook::WptTestHook(WptHook& hook, DWORD timeout):
+  hook_(hook) {
   _measurement_timeout = timeout;
 }
 
@@ -50,28 +49,4 @@ void WptTestHook::LoadFromFile() {
 -----------------------------------------------------------------------------*/
 void WptTestHook::ReportData() {
   hook_.Report();
-}
-
-/*-----------------------------------------------------------------------------
-  
------------------------------------------------------------------------------*/
-bool WptTestHook::ProcessCommand(ScriptCommand& command, bool &consumed) {
-  bool continue_processing = WptTest::ProcessCommand(command, consumed);
-  if (!consumed) {
-    consumed = true;
-
-    CString cmd = command.command;
-    cmd.MakeLower();
-
-    if (cmd == _T("resizeresponsive")) {
-      test_state_.ResizeBrowserForResponsiveTest();
-      continue_processing = false;
-      consumed = true;
-    } else {
-      continue_processing = false;
-      consumed = false;
-    }
-  }
-
-  return continue_processing;
 }

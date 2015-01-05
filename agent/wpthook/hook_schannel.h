@@ -5,7 +5,6 @@
 
 class TestState;
 class TrackSockets;
-class WptTestHook;
 
 typedef BOOL (__stdcall * PFN_CERTVERIFYCERTIFICATECHAINPOLICY)(
     LPCSTR pszPolicyOID, PCCERT_CHAIN_CONTEXT pChainContext,
@@ -15,7 +14,7 @@ typedef BOOL (__stdcall * PFN_CERTVERIFYCERTIFICATECHAINPOLICY)(
 class SchannelHook
 {
 public:
-  SchannelHook(TrackSockets& sockets, TestState& test_state, WptTestHook& test);
+  SchannelHook(TrackSockets& sockets, TestState& test_state);
   ~SchannelHook(void);
   void Init();
 
@@ -47,7 +46,6 @@ public:
 private:
   TestState& _test_state;
   TrackSockets& _sockets;
-  WptTestHook& _test;
   NCodeHookIA32* _hook;
 
   // original functions

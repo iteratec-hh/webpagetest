@@ -221,10 +221,7 @@ bool SoftwareUpdate::InstallSoftware(CString app, CString file_url,CString md5,
                     _T("[wptdriver] Downloading - %s\n"), (LPCTSTR)file_url);
           if (HttpSaveFile(file_url, file_path)) {
             if (md5.GetLength()) {
-              CString file_md5 = HashFileMD5(file_path);
-              if (file_md5.CompareNoCase(md5)) {
-                WptTrace(loglevel::kTrace,
-                          _T("[wptdriver] Hash mismatch - %s (expected %s)\n"), (LPCTSTR)file_md5, (LPCTSTR)md5);
+              if (HashFileMD5(file_path) != md5) {
                 install = false;
               }
             }
@@ -259,8 +256,6 @@ bool SoftwareUpdate::InstallSoftware(CString app, CString file_url,CString md5,
               if (ShellExecuteEx(&shell_info) && shell_info.hProcess) {
                 if (WaitForSingleObject(shell_info.hProcess, 
                       SOFTWARE_INSTALL_TIMEOUT) == WAIT_OBJECT_0) {
-                  WaitForChildProcesses(GetProcessId(shell_info.hProcess), SOFTWARE_INSTALL_TIMEOUT);
-                  WaitForProcessesByName(exe, SOFTWARE_INSTALL_TIMEOUT);
                   ok = true;
                 }
                 CloseHandle(shell_info.hProcess);

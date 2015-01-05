@@ -28,7 +28,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 var logger = require('logger');
 var process_utils = require('process_utils');
-var webdriver = require('selenium-webdriver');
 
 /**
  * Base class for browsers.
@@ -97,50 +96,4 @@ BrowserBase.prototype.killChildProcessIfNeeded = function() {
   } else {
     logger.debug('Browser/driver process already unset, not killing');
   }
-};
-
-/**
- * Verifies that the browser is ready to run tests.
- *
- * @return {webdriver.promise.Promise} resolve() for addErrback.
- */
-BrowserBase.prototype.scheduleAssertIsReady = function() {
-  'use strict';
-  return webdriver.promise.fulfilled();  // Assume it's ready.
-};
-
-/**
- * Attempts recovery if the browser is not ready to run tests.
- *
- * @return {webdriver.promise.Promise} resolve(boolean) wasOffline,
- *   i.e. didRecover:  false if already ready, true if wasOffline but we
- *   sucessfully recovered, else an error is thrown if we're offline.
- */
-BrowserBase.prototype.scheduleMakeReady = function() {
-  'use strict';
-  return this.scheduleAssertIsReady().then(function() {
-    return false;  // Was already online.
-  });
-};
-
-/**
- * Imports a browser module and creates a browser object, given args.
- *
- * @param {webdriver.promise.ControlFlow} app the ControlFlow for scheduling.
- * @param {Object} args additional browser-specific args.
- *   #param {Object} flags:
- *     #param {string=} browser package-qualified browser class name for
- *         instantiation, which defaults to
- *         browser_local_chrome.BrowserLocalChrome.
- * @return {BrowserBase} the browser object.
- */
-exports.createBrowser = function(app, args) {
-  'use strict';
-  var browserType = (args.flags.browser ? args.flags.browser :
-      'browser_local_chrome.BrowserLocalChrome');
-  logger.debug('Creating browser ' + browserType);
-  var lastDot = browserType.lastIndexOf('.');
-  var browserModule = require(browserType.substring(0, lastDot));
-  var BrowserClass = browserModule[browserType.substring(lastDot + 1)];
-  return new BrowserClass(app, args);
 };

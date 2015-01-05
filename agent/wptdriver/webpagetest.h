@@ -38,15 +38,11 @@ public:
 
   bool _exit;
   bool has_gpu_;
-  bool rebooting_;
-
+  
 private:
   WptSettings&  _settings;
   WptStatus&    _status;
-  DWORD         _majorVer;
-  DWORD         _minorVer;
-  DWORD         _buildNo;
-  DWORD         _revisionNo;
+  DWORD         _version;
   CString       _computer_name;
   CString       _dns_servers;
 
@@ -55,7 +51,7 @@ private:
   bool ParseTest(CString& test_string, WptTestDriver& test);
   bool CrackUrl(CString url, CString &host, unsigned short &port, 
                 CString& object, DWORD &secure_flag);
-  void BuildFormData(WptSettings& settings, WptTestDriver& test, 
+  bool BuildFormData(WptSettings& settings, WptTestDriver& test, 
                      bool done,
                      CString file_name, DWORD file_size,
                      CString& headers, CStringA& footer, 
@@ -72,4 +68,6 @@ private:
   bool GetClient(WptTestDriver& test);
   bool UnzipTo(CString zip_file, CString dest);
   void UpdateDNSServers();
+
+  CString WebPagetest::GetMultistepVersionInfo();
 };

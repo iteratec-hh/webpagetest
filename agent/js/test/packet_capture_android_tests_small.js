@@ -110,7 +110,9 @@ describe('packet_capture_android small', function() {
         }
       }
       if (stdout !== undefined) {
-        proc.stdout.emit('data', stdout);
+        global.setTimeout(function() {
+          proc.stdout.emit('data', stdout);
+        }.bind(this), 1);
       }
       return false;
     };
@@ -149,7 +151,9 @@ describe('packet_capture_android small', function() {
       }
     }
     if (stdout !== undefined) {
-      proc.stdout.emit('data', stdout);
+      global.setTimeout(function() {
+        proc.stdout.emit('data', stdout);
+      }, 1);
       return false;  // Fake-exit in 5 fake milliseconds.
     }
     return undefined;  // Let the caller handle it.
@@ -157,7 +161,7 @@ describe('packet_capture_android small', function() {
 
   it('should start and stop with on-device tcpdump', function() {
     var pcap = new packet_capture_android.PacketCaptureAndroid(
-        app, {flags: {deviceSerial: serial}});
+        app, {deviceSerial: serial});
 
     spawnStub.callback = function(proc, command, args) {
       var ret = startSpawnStubCallback(proc, command, args);
@@ -167,7 +171,9 @@ describe('packet_capture_android small', function() {
       if (/adb$/.test(command) &&
           args.some(function(arg) { return arg === 'ls'; }) &&
           args.some(new RegExp().test.bind(/^\/system[\/\w\*]+\/tcpdump$/))) {
-        proc.stdout.emit('data', '0');
+        global.setTimeout(function() {
+          proc.stdout.emit('data', '0');
+        }, 1);
       }
       return false;
     };
@@ -195,7 +201,7 @@ describe('packet_capture_android small', function() {
 
     var localTcpdump = '/gaga/tcpdump';
     var pcap = new packet_capture_android.PacketCaptureAndroid(
-        app, { flags: {tcpdumpBinary: localTcpdump, deviceSerial: serial}});
+        app, {tcpdumpBinary: localTcpdump, deviceSerial: serial});
 
     spawnStub.callback = function(proc, command, args) {
       var ret = startSpawnStubCallback(proc, command, args);
@@ -207,7 +213,9 @@ describe('packet_capture_android small', function() {
           args.some(function(arg) {
               return arg === '/data/local/tmp/tcpdump';
             })) {
-        proc.stdout.emit('data', '1');
+        global.setTimeout(function() {
+          proc.stdout.emit('data', '1');
+        }.bind(this), 1);
       }
       return false;
     };
