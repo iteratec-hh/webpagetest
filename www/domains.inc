@@ -1,24 +1,33 @@
 <?php
-require_once('object_detail.inc'); 
+require 'object_detail.inc'; 
 
 /**
 * Aggregate the individual requests by domain
 * 
 * @param mixed $requests
 */
-function getDomainBreakdown($id, $testPath, $run, $cached, &$requests)
+function getDomainBreakdown($id, $testPath, $run, $cached, &$requests, $eventName = null)
 {
     // get all of the requests
     if (!isset($requests) || !count($requests)) {
         $secure = false;
         $haveLocations = false;
+        if($eventName != null){
+        	$requests = getRequests($id, $testPath, $run, $cached, $secure, $haveLocations, false, false, true);        	
+        } else {
         $requests = getRequests($id, $testPath, $run, $cached, $secure, $haveLocations, false);
+    }
+    }
+    if($eventName != null){
+    	$requestsArray = $requests[$eventName];
+    } else {
+    	$requestsArray = $requests;
     }
     
     $breakdown = array();
     
     $connections = array();
-    foreach($requests as $request)
+    foreach($requestsArray as $request)
     {
         $domain = strrev(strtok($request['host'],':'));
         $object = strtolower($request['url']);

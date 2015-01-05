@@ -2,19 +2,20 @@
 chdir('..');
 $MIN_DAYS = 2;
 
-include 'common.inc';
+// bail if we are already running
+$lock = fopen('./tmp/archive.lock', 'w');
+if ($lock) {
+    if (flock($lock, LOCK_EX | LOCK_NB) == false) {
+        fclose($lock);
+        echo "Archive process is already running\n";
+        exit(0);
+    }
+}
+
+include 'common_lib.inc';
 require_once('archive.inc');
 ignore_user_abort(true);
 set_time_limit(3300);   // only allow it to run for 55 minutes
-if (function_exists('proc_nice'))
-  proc_nice(19);
-
-// bail if we are already running
-$lock = Lock("Archive", false, 3600);
-if (!isset($lock)) {
-  echo "Archive process is already running\n";
-  exit(0);
-}
 
 if (array_key_exists('archive_days', $settings)) {
     $MIN_DAYS = $settings['archive_days'];
@@ -60,9 +61,8 @@ if ((isset($archive_dir) && strlen($archive_dir)) ||
                     foreach( $days as $day ) {
                         $dayDir = "$monthDir/$day";
                         if( is_dir($dayDir) && $day != '.' && $day != '..' ) {
-                            $elapsedDays = ElapsedDays($year, $month, $day);
-                            if ($elapsedDays >= ($MIN_DAYS - 1)) {
-                                CheckDay($dayDir, "$year$month$day", $elapsedDays);
+                            if (ElapsedDays($year, $month, $day) >= ($MIN_DAYS - 1)) {
+                                CheckDay($dayDir, "$year$month$day");
                             }
                         }
                     }
@@ -80,7 +80,11 @@ if( $log ) {
     fwrite($log, "Archived: $archiveCount\nDeleted: $deleted\nKept: $kept\n" . gmdate('r') . "\n");;
     fclose($log);
 }
-Unlock($lock);
+
+if ($lock) {
+    flock($lock, LOCK_UN);
+    fclose($lock);
+}
 
 /**
 * Clean up the relay directory of old tests
@@ -100,13 +104,13 @@ function CheckRelay() {
                         if ($year != '.' && $year != '..') {
                             $yearDir = "$keydir/$year";
                             if (is_numeric($year)) {
-                                if (ElapsedDays($year, '01', '01') < 10) {
+                                if (ElapsedDays($year, 1, 1) < 10) {
                                     $months = scandir($yearDir);
                                     foreach( $months as $month ) {
                                         if ($month != '.' && $month != '..') {
                                             $monthDir = "$yearDir/$month";
                                             if (is_numeric($month)) {
-                                                if (ElapsedDays($year, $month, '01') < 10) {
+                                                if (ElapsedDays($year, $month, 1) < 10) {
                                                     $days = scandir($monthDir);
                                                     foreach( $days as $day ) {
                                                         if ($day != '.' && $day != '..') {
@@ -122,7 +126,6 @@ function CheckRelay() {
                                                                     delTree($dayDir);
                                                                 }
                                                             }
-                                                            @rmdir($dayDir);
                                                         }
                                                     }
                                                 } else {
@@ -135,7 +138,6 @@ function CheckRelay() {
                                                     delTree($monthDir);
                                                 }
                                             }
-                                            @rmdir($monthDir);
                                         }
                                     }
                                 } else {
@@ -148,13 +150,11 @@ function CheckRelay() {
                                     delTree($yearDir);
                                 }
                             }
-                            @rmdir($yearDir);
                         }
                     }
                 } else {
                     delTree($keydir);
                 }
-                @rmdir($keydir);
             } else {
                 unlink($keydir);
             }
@@ -173,7 +173,7 @@ function CheckOldDir($path) {
         if( $oldDir != '.' && $oldDir != '..' ) {
             // see if it is a test or a higher-level directory
             if( is_file("$path/$oldDir/testinfo.ini") )
-                CheckTest("$path/$oldDir", $oldDir, 1000);
+                CheckTest("$path/$oldDir", $oldDir);
             else
                 CheckOldDir("$path/$oldDir");
         }
@@ -188,7 +188,7 @@ function CheckOldDir($path) {
 * @param mixed $baseID
 * @param mixed $archived
 */
-function CheckDay($dir, $baseID, $elapsedDays) {
+function CheckDay($dir, $baseID) {
     $tests = scandir($dir);
     foreach( $tests as $test ) {
         if( $test != '.' && $test != '..' ) {
@@ -196,9 +196,9 @@ function CheckDay($dir, $baseID, $elapsedDays) {
             if( is_file("$dir/$test/testinfo.ini") ||
                 is_file("$dir/$test/testinfo.json.gz") ||
                 is_file("$dir/$test/testinfo.json"))
-                CheckTest("$dir/$test", "{$baseID}_$test", $elapsedDays);
+                CheckTest("$dir/$test", "{$baseID}_$test");
             else
-                CheckDay("$dir/$test", "{$baseID}_$test", $elapsedDays);
+                CheckDay("$dir/$test", "{$baseID}_$test");
         }
     }
     @rmdir($dir);
@@ -210,7 +210,7 @@ function CheckDay($dir, $baseID, $elapsedDays) {
 * @param mixed $logFile
 * @param mixed $match
 */
-function CheckTest($testPath, $id, $elapsedDays) {
+function CheckTest($testPath, $id) {
     global $archiveCount;
     global $deleted;
     global $kept;
@@ -229,7 +229,7 @@ function CheckTest($testPath, $id, $elapsedDays) {
               $archiveCount++;
               $logLine .= "Archived";
                                                                                             
-              if (!VerifyArchive($id) && $elapsed < 30)
+              if (!VerifyArchive($id) && $elapsed < 60)
                   $delete = false;
           } else if ($elapsed < 60) {
               $delete = false;
@@ -239,18 +239,11 @@ function CheckTest($testPath, $id, $elapsedDays) {
                    $status['remote'] &&
                    $elapsed > 1))
                 $delete = true;
-          } elseif ($elapsedDays > 10) {
-            $logLine .= "Old test, Failed to archive, deleting";
-            $delete = true;
-          } else {
-            $logLine .= "Failed to archive";
           }
-      } else {
+      } else
           $logLine .= "Last Accessed $elapsed days";
-      }
-    } else {
+    } else
       $delete = true;
-    }
 
     if ($delete) {
         delTree("$testPath/");
@@ -282,7 +275,7 @@ function ElapsedDays($year, $month, $day) {
 * 
 */
 function CheckLocations() {
-    $locations = LoadLocationsIni();
+    $locations = parse_ini_file('./settings/locations.ini', true);
     BuildLocations($locations);
     $deleted = false;
     echo "\n";

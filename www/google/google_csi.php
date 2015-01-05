@@ -3,7 +3,6 @@
 // It requires "id" in the params corresponding to a particular test. If the 
 // "run" and "cached" param are present (when called from details.php), then
 // it does Google CSI parsing only for the given cached/no-cached run.
-// Also available: JSON output via &f=json and JSONP via &f=json&callback=foo.
 
 // cd to the root directory.
 chdir('..');
@@ -11,21 +10,17 @@ chdir('..');
 // Include for test related information.
 include 'common.inc';
 // Include for parsing the http requests from a run.
-require_once('object_detail.inc');
+include 'object_detail.inc';
 require_once('google/google_lib.inc');
 
 // Fill the required variables.
 $runs = $test['test']['runs'];
-$format = 'csv';
-if (array_key_exists('f', $_REQUEST) && $_REQUEST['f'] == 'json') {
-  $format = 'json';
-}
-OutputCSI($id, $testPath, $run, $cached, $runs, $format);
+OutputCSI($id, $testPath, $run, $cached, $runs);
 
 /**
- * Main function of this module which outputs csv as attachment or json/jsonp.
+ * Main function of this module which outputs the csv as attachment.
  */
-function OutputCSI($id, $testPath, $run, $cached, $runs, $format)
+function OutputCSI($id, $testPath, $run, $cached, $runs)
 {
 	// Check whether a test-id and test-path are available.
 	if ( is_null($id) || is_null($testPath))
@@ -33,30 +28,23 @@ function OutputCSI($id, $testPath, $run, $cached, $runs, $format)
           header('HTTP/1.0 404 Not Found');
           return;
         }
-  $data = null;
-  if ($format == 'csv')
-    OutputCsvHeaders('csi.csv');
-  else if ($format == 'json')
-    $data = array();
+	OutputCsvHeaders('csi.csv');
 	// If it is for a particular run specified by the $run variable, then output
-	// csi only for that run. Else, output for all.
+	// csi csv only for that run. Else, output for all.
 	if ( !is_null($_GET['run']) )
         {
-		ParseCsiForRun($id, $testPath, $run, $cached, $data);
+		ParseCsiForRun($id, $testPath, $run, $cached);
         }
 	else if ( $runs )
         {
                 for ( $run = 1; $run <= $runs; $run++ )
                 {
 			// First-view.
-			ParseCsiForRun($id, $testPath, $run, FALSE, $data);
+			ParseCsiForRun($id, $testPath, $run, FALSE);
 			// Repeat-view.
-			ParseCsiForRun($id, $testPath, $run, TRUE, $data);
+			ParseCsiForRun($id, $testPath, $run, TRUE);
 		}
 	}
-  if ($format == 'json') {
-    json_response($data);
-  }
 }
 
 /**
@@ -74,13 +62,10 @@ function OutputCsvHeaders($filename)
 /**
  * Function for parsing/outputting the CSI data for a given run
  */
-function ParseCsiForRun($id, $testPath, $run, $cached, &$data)
+function ParseCsiForRun($id, $testPath, $run, $cached)
 {
         $params = ParseCsiInfo($id, $testPath, $run, $cached, true);
-  if (!is_null($data))
-    OutputJsonFromParams($id, $run, $cached, $params, $data);
-  else
-    OutputCsvFromParams($id, $run, $cached, $params);
+	OutputCsvFromParams($id, $run, $cached, $params);
 }
 
 /***
@@ -111,33 +96,5 @@ function OutputCsvFromParams($id, $run, $cached, $params)
 		echo '"' . $param_value . '"';
 	        echo "\r\n";
 	}
-}
-
-/***
- * Function to output the values from the params map/array in json format.
- */
-function OutputJsonFromParams($id, $run, $cached, $params, &$data)
-{
-  if (!array_key_exists('s', $params) || $params['s'] == '')
-    $params['s'] = 'None';
-  if (!array_key_exists('action', $params) || $params['action'] == '')
-    $params['action'] = 'None';
-
-  foreach ($params as $param_name => $param_value) {
-    if ($param_name == 's' || $param_name == 'action'
-        || $param_name == 'rt' || $param_name == 'it'
-        || $param_name == 'irt') {
-      continue;
-    }
-    array_push($data, array(
-      'id' => $id,
-      'run' => $run,
-      'cached' => $cached == 1,
-      'service' => $params['s'],
-      'action' => $params['action'],
-      'variable' => $param_name,
-      'value' => $param_value
-    ));
-  }
 }
 ?>

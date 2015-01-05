@@ -1,7 +1,7 @@
 <?php
 chdir('..');
 include 'common.inc';
-$videoId = $_REQUEST['id'];
+$id = $_REQUEST['id'];
 $valid = false;
 $done = false;
 $embed = false;
@@ -43,7 +43,7 @@ if( array_key_exists('f', $_REQUEST)) {
 $ini = null;
 $title = "WebPagetest - Visual Comparison";
 
-$dir = GetVideoPath($videoId, true);
+$dir = GetVideoPath($id, true);
 if( is_dir("./$dir") )
 {
     $valid = true;
@@ -100,20 +100,19 @@ if( $xml || $json )
     {
         if( $done )
         {
-            $code = 200;
+            $ret = 200;
 
-            $protocol = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on') || (isset($_SERVER['HTTP_SSL']) && $_SERVER['HTTP_SSL'] == 'On')) ? 'https' : 'http';
             $host  = $_SERVER['HTTP_HOST'];
             $uri   = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
-            $videoUrl = "$protocol://$host$uri/download.php?id=$videoId";
-            $embedUrl = "$protocol://$host$uri/view.php?embed=1&id=$videoId";
+            $videoUrl = "http://$host$uri/download.php?id=$id";
+            $embedUrl = "http://$host$uri/view.php?embed=1&id=$id";
         }
         else
-            $code = 100;
+            $ret = 100;
     }
     else
     {
-        $code = 400;
+        $ret = 400;
         $error = "Invalid video ID";
     }
 }
@@ -123,12 +122,12 @@ if( $xml )
     header ('Content-type: text/xml');
     echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     echo "<response>\n";
-    echo "<statusCode>$code</statusCode>\n";
+    echo "<statusCode>$ret</statusCode>\n";
     echo "<statusText>$error</statusText>\n";
     if( strlen($_REQUEST['r']) )
         echo "<requestId>{$_REQUEST['r']}</requestId>\n";
     echo "<data>\n";
-    echo "<videoId>$videoId</videoId>\n";
+    echo "<videoId>$id</videoId>\n";
     if( strlen($videoUrl) )
         echo '<videoUrl>' . htmlspecialchars($videoUrl) . '</videoUrl>\n';
     echo "</data>\n";
@@ -137,10 +136,10 @@ if( $xml )
 elseif( $json )
 {
     $ret = array();
-    $ret['statusCode'] = $code;
+    $ret['statusCode'] = $ret;
     $ret['statusText'] = $error;
     $ret['data'] = array();
-    $ret['data']['videoId'] = $videoId;
+    $ret['data']['videoId'] = $id;
     if( strlen($videoUrl) )
         $ret['data']['videoUrl'] = $videoUrl;
     if (strlen($embedUrl)) {
@@ -163,8 +162,6 @@ else
         <?php
         if( $valid && !$done && !$embed )
         {
-            $autoRefresh = true;
-            $noanalytics = true;
             ?>
             <noscript>
             <meta http-equiv="refresh" content="10" />
@@ -273,7 +270,8 @@ else
         <div class="page">
             <?php
             if( !$embed ) {
-                $tab = '';
+                $tab = 'Test Result';
+                $videoId = $id;
                 $nosubheader = true;
                 include 'header.inc';
             }
@@ -338,14 +336,13 @@ else
                 </video>";
 
                 if(!$embed) {
-                    echo "<br><a class=\"link\" href=\"/video/download.php?id=$videoId\">Download</a> | ";
+                    echo "<br><a class=\"link\" href=\"/video/download.php?id=$id\">Download</a> | ";
                     echo '<a class="link" href="javascript:ShowEmbed()">Embed</a>';
-                    $protocol = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on') || (isset($_SERVER['HTTP_SSL']) && $_SERVER['HTTP_SSL'] == 'On')) ? 'https' : 'http';
                     $dataText = 'View as data comparison';
-                    $dataUrl = "$protocol://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$videoId&data=1";
+                    $dataUrl = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$id&data=1";
                     if ($displayData) {
                       $dataText = 'View as video';
-                      $dataUrl = "$protocol://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$videoId";
+                      $dataUrl = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$id";
                     }
                     if (defined('BARE_UI'))
                       $dataUrl .= '&bare=1';
@@ -379,8 +376,7 @@ else
               $dimensions = "&width=$width&height=$height";
               $framesize = " width=\"$width\" height=\"$height\"";
             }
-            $protocol = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on') || (isset($_SERVER['HTTP_SSL']) && $_SERVER['HTTP_SSL'] == 'On')) ? 'https' : 'http';
-            echo htmlspecialchars("<iframe src=\"$protocol://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$videoId&embed=1$dimensions\"$framesize></iframe>");
+            echo htmlspecialchars("<iframe src=\"http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?id=$id&embed=1$dimensions\"$framesize></iframe>");
             ?>
             </p>
             <input id="embed-ok" type=button class="simplemodal-close" value="OK">

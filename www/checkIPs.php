@@ -1,5 +1,4 @@
 <?php
-require_once('common.inc');
 error_reporting(0);
 $days = 0;
 if( isset($_GET["days"]) )
@@ -26,10 +25,10 @@ $targetDate = new DateTime($from, new DateTimeZone('GMT'));
 for($offset = 0; $offset <= $days; $offset++)
 {
     $dayCount = array();
-
+    
     // figure out the name of the log file
     $fileName = './logs/' . $targetDate->format("Ymd") . '.log';
-
+    
     // load the log file into an array of lines
     $lines = file($fileName, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     if( $lines)
@@ -47,7 +46,7 @@ for($offset = 0; $offset <= $days; $offset++)
                     if (array_key_exists(14, $parts))
                         $count = intval(trim($parts[14]));
                     $count = max(1, $count);
-                    if( ($privateInstall || $admin) && strlen($key) && array_key_exists($key, $keys) )
+                    if( strlen($key) && array_key_exists($key, $keys) )
                       $keys[$ip] = $keys[$key]['contact'];
                     if( isset($counts[$ip]) )
                         $counts[$ip] += $count;
@@ -64,7 +63,7 @@ for($offset = 0; $offset <= $days; $offset++)
     }
 
     $dayCounts[] = $dayCount;
-
+    
     // on to the previous day
     $targetDate->modify('-1 day');
 }
@@ -95,11 +94,7 @@ foreach ($dayCounts as &$dayCount) {
 // sort the counts descending
 arsort($counts);
 
-$title = 'WebPagetest - Check IPs';
-include 'admin_header.inc';
-
-echo '<table class="table"><tr><th>Total</th>';
-
+echo '<html><head></head><body><table><tr><th>Total</th>';
 foreach( $dayCounts as $index => &$dayCount ) {
     echo "<th>Day $index</th>";
 }
@@ -122,7 +117,5 @@ foreach($counts as $ip => $count)
     else
         break;
 }
-echo "</table>";
-
-include 'admin_footer.inc';
+echo "</table></body></html>";
 ?>

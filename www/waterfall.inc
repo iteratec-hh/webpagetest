@@ -1,11 +1,12 @@
 <?php
+require_once('utils.inc');
 require_once('draw.inc');
 require_once('contentColors.inc');
 
 /**
-* Regroup requests into connection rows.
-*
-* @param mixed $requests
+ * Regroup requests into connection rows.
+ *
+ * @param mixed $requests
 */
 function GetConnectionRows(&$requests, $show_labels = true) {
     $host_connections = array();  // group connections by host
@@ -45,8 +46,8 @@ function GetConnectionRows(&$requests, $show_labels = true) {
 }
 
 /**
-* Return a row to indicate filtered requests. Helper for GetRequestRows.
-*/
+ * Return a row to indicate filtered requests. Helper for GetRequestRows.
+ */
 function _GetDotsRow() {
     return array(
         'is_connection' => false,
@@ -59,19 +60,16 @@ function _GetDotsRow() {
 }
 
 /**
-* Return an array of rows to use in waterfall view.
-*/
+ * Return an array of rows to use in waterfall view.
+ */
 function GetRequestRows($requests, $use_dots, $show_labels = true) {
     $rows = array();
     $filtered_requests = FilterRequests($requests);
-
-    // Keep track of the number of each request so we can add a dotted row when one is missing
-    $last_request_number = 0;
+    if ($use_dots && count($filtered_requests) &&
+        !array_key_exists(0, $filtered_requests)) {
+        $rows[] = _GetDotsRow();
+    }
     foreach ($filtered_requests as $request) {
-        if ($request['number'] > $last_request_number + 1) {
-            $rows[] = _GetDotsRow();
-        }
-        
         $rows[] = array(
             'is_connection' => false,
             'label' => GetRequestLabel($request, $show_labels),
@@ -80,8 +78,6 @@ function GetRequestRows($requests, $use_dots, $show_labels = true) {
             'is_secure' => $request['is_secure'],
             'requests' => array($request)
         );
-
-        $last_request_number = $request['number'];
     }
     if ($use_dots && count($filtered_requests) &&
         !array_key_exists(count($requests) - 1, $filtered_requests)) {
@@ -91,8 +87,8 @@ function GetRequestRows($requests, $use_dots, $show_labels = true) {
 }
 
 /**
-* Return an array of page events selected from the page data.
-*/
+ * Return an array of page events selected from the page data.
+ */
 function GetPageEvents($page_data) {
     return array(
         'render' => $page_data['render'],
@@ -108,8 +104,8 @@ function GetPageEvents($page_data) {
 }
 
 /**
-* Return data for an image map of the given rows.
-*/
+ * Return data for an image map of the given rows.
+ */
 function GetWaterfallMap($rows, $url, $options, &$page_data) {
     $page_events = array();
     $is_image_map = true;
@@ -117,20 +113,20 @@ function GetWaterfallMap($rows, $url, $options, &$page_data) {
 }
 
 /**
-* Return an image identifier (from imagecreate) for a waterfall chart.
-*
-* @return resource
-*/
+ * Return an image identifier (from imagecreate) for a waterfall chart.
+ *
+ * @return resource
+ */
 function GetWaterfallImage($rows, $url, $page_events, $options, &$page_data) {
     $is_image_map = false;
     return _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, $page_data);
 }
 
 /**
-* Draw the waterfall view image.
-*
-* @return resource
-*/
+ * Draw the waterfall view image.
+ *
+ * @return resource
+ */
 function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$page_data) {
     global $settings;
     $is_mime = (bool)@$options['is_mime'];
@@ -175,7 +171,11 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
             $max_bw = $options['max_bw'];
         }
         $perfs = LoadPerfData($perf_file, $use_cpu, $use_bw, false, $max_bw);
-        $perf_height = $is_thumbnail ? 16 : 50;
+        if ($is_thumbnail) {
+            $perf_height = 16;
+        } else {
+            $perf_height = 50;
+        }
         if (isset($perfs) && is_array($perfs)) {
             foreach (array_keys($perfs) as $key) {
                 if ($perfs[$key]['count']) {
@@ -189,27 +189,7 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
             }
         }
     }
-    if ($use_cpu && !$is_image_map && isset($options) && is_array($options) &&
-        array_key_exists('path', $options) &&
-        array_key_exists('run_id', $options) &&
-        array_key_exists('is_cached', $options)) {
-      require_once('devtools.inc.php');
-      $cpu_slices = DevToolsGetCPUSlices($options['path'], $options['run_id'], $options['is_cached']);
-      if (isset($cpu_slices) && is_array($cpu_slices) && count($cpu_slices)) {
-        $perf_height = $is_thumbnail ? 16 : 50;
-        $cpu_slice_info = array();
-        foreach (array_keys($cpu_slices) as $thread) {
-          $cpu_slice_info[] = array('thread' => $thread,
-                                    'x1' => 0,
-                                    'x2' => $width - 1,
-                                    'y1' => $height - 1,
-                                    'y2' => $height + $perf_height - 2,
-                                    'height' => $perf_height);
-          $height += $perf_height - 1;
-        }
-      }
-    }
-    
+
     if ($is_mime) {
         $mime_y = $height;
         $height += (2 * $row_height) + 2;
@@ -322,30 +302,6 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                 }
             }
         }
-        if (isset($cpu_slice_info)) {
-          $cpu_slice_colors = array();
-          $mime_colors = MimeColors();
-          
-          $cpu_slice_colors['ParseHTML'] = GetColor($im, 130, 168, 222);
-          $cpu_slice_colors['ResourceReceivedData'] = $cpu_slice_colors['ParseHTML'];
-
-          $cpu_slice_colors['Layout'] = GetColor($im, 171, 213, 149);
-          $cpu_slice_colors['RecalculateStyles'] = $cpu_slice_colors['Layout'];
-
-          $cpu_slice_colors['Paint'] = GetColor($im, 194, 219, 181);
-          $cpu_slice_colors['CompositeLayers'] = $cpu_slice_colors['Paint'];
-          $cpu_slice_colors['DecodeImage'] = $cpu_slice_colors['Paint'];
-          $cpu_slice_colors['Rasterize'] = $cpu_slice_colors['Paint'];
-
-          $cpu_slice_colors['EvaluateScript'] = GetColor($im, 228, 185, 136);
-          $cpu_slice_colors['EventDispatch'] = $cpu_slice_colors['EvaluateScript'];
-          $cpu_slice_colors['FunctionCall'] = $cpu_slice_colors['EvaluateScript'];
-          $cpu_slice_colors['GCEvent'] = $cpu_slice_colors['EvaluateScript'];
-          $cpu_slice_colors['TimerFire'] = $cpu_slice_colors['EvaluateScript'];
-
-          $cpu_slice_colors['other'] = GetColor($im, 184, 184, 184);
-          $cpu_slice_colors['Program'] = $cpu_slice_colors['other'];
-        }
 
         $bg_colors = array(
             'default' => $white,
@@ -376,20 +332,10 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                     if (!$is_thumbnail && $show_labels) {
                         DrawPerfLabel($im, $key, $p, $font, $black);
                     }
-                    DrawPerfBackground($im, $p, $data_x, $border_color, $bg_colors['alt']);
+                    DrawPerfBackground($im, $p, $data_x, $border_color,
+                                       $bg_colors['alt']);
                 }
             }
-        }
-        
-        // Draw timeline backgrounds, labels and borders
-        if (isset($cpu_slice_info)) {
-          foreach ($cpu_slice_info as $thread => $p) {
-              if (!$is_thumbnail && $show_labels) {
-                  $label = $thread ? 'Browser Background Thread' : 'Browser Main Thread';
-                  DrawPerfLabel($im, $label, $p, $font, $black);
-              }
-              DrawPerfBackground($im, $p, $data_x, $border_color, $bg_colors['alt']);
-          }
         }
 
         // Draw the time scale.
@@ -413,13 +359,10 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                     foreach ($perfs as $p) {
                         if (array_key_exists('count', $p)) {
                             // Add gridline to performance chart area.
-                            imageline($im, $x, $p['y1'] + 1, $x, $p['y2'] - 1, $time_scale_color);
+                            imageline($im, $x, $p['y1'] + 1, $x, $p['y2'] - 1,
+                                      $time_scale_color);
                         }
                     }
-                }
-                if (isset($cpu_slice_info)) {
-                  foreach ($cpu_slice_info as $p)
-                    imageline($im, $x, $p['y1'] + 1, $x, $p['y2'] - 1, $time_scale_color);
                 }
                 // Draw the time label.
                 if (!$is_thumbnail) {
@@ -455,11 +398,6 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                                                  'y2' => $p['y2'] - 1);
                         }
                     }
-                }
-                if (isset($cpu_slice_info)) {
-                  foreach ($cpu_slice_info as $p)
-                    $endpoints[] = array('y1' => $p['y1'] + 1,
-                                         'y2' => $p['y2'] - 1);
                 }
                 foreach ($endpoints as $y1y2) {
                     $y1 = $y1y2['y1'];
@@ -525,42 +463,6 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                         }
                     }
                 }
-            }
-            
-            // Draw the Timeline information
-            if (isset($cpu_slice_info) && $max_ms) {
-              foreach ($cpu_slice_info as $p) {
-                // go through each pixel and draw bars individually
-                $x1 = $data_x + 1;
-                $x2 = $data_x + $data_width;
-                $cpu_top = $p['y1'] + 1;
-                $cpu_bottom = $p['y2'] - 1;
-                $cpu_height = $cpu_bottom - $cpu_top + 1;
-                $bins = intval(ceil($max_ms / $data_width));
-                $slices = $cpu_slices[$p['thread']];
-                $max_slices_ms = count($slices);
-                if ($x1 < $x2) {
-                  for ($x = $x1; $x <= $x2; $x++) {
-                    $ms = intval(floor(((($x - $x1) / $data_width) * $max_ms)));
-                    if ($ms <= $max_slices_ms) {
-                      $slice_bins = min($bins, $max_slices_ms - $ms);
-                      $cpu_times = AverageCpuSlices($ms, $slice_bins, $slices, $cpu_slice_colors);
-                      if ($cpu_times) {
-                        // draw the line for this data point in the order the colors are defined
-                        $y = $cpu_bottom;
-                        foreach ($cpu_slice_colors as $type => $color) {
-                          if (array_key_exists($type, $cpu_times)) {
-                            $pixels = $cpu_height * $cpu_times[$type];
-                            $y2 = max($cpu_bottom - $pixels, $cpu_top);
-                            imageline($im, $x, $y, $x, $y2, $color);
-                            $y = $y2;
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
             }
 
             // Draw the csi metrics.
@@ -645,7 +547,7 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                 }
                 $request['colors'] = GetRequestColors(
                     $request['contentType'],
-                    $is_thumbnail, $is_mime, $is_state, $request['url']);
+                    $is_thumbnail, $is_mime, $is_state);
                 $bars = GetBars($request, $x_scaler, $y1, $y2,
                                 $is_thumbnail, $is_mime, $is_state);
                 foreach ($bars as $bar) {
@@ -667,8 +569,7 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
 
     // Draw the MIME legend
     if ($is_mime && !$is_image_map) {
-        if (!isset($mime_colors))
-          $mime_colors = MimeColors();
+        $mime_colors = MimeColors();
         $mime_count = count($mime_colors);
         $bar_width = $width / $mime_count;
         $x = 0;
@@ -679,8 +580,9 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
                              $font_width * strlen($mime_type)) / 2);
             DrawBar($im, $x + 2, $bar_y + 1, $x + $bar_width - 4,
                     $bar_y + $row_height - 2, $color);
-            foreach ($color as &$col)
-                $col = min(255, ($col + ((255 - $col) * 0.65)));
+            foreach ($color as &$col) {
+                $col = min(255, ($col + ((255 - $col) * 0.4)));
+            }
             DrawBar($im, $x + 2, $bar_y + 1, $x + ($bar_width / 2),
                     $bar_y + $row_height - 2, $color);
             imagestring($im, $font, $text_x, $text_y + 1, $mime_type, $black);
@@ -688,19 +590,38 @@ function _GetMapOrImage($rows, $url, $page_events, $options, $is_image_map, &$pa
         }
     }
 
-    if ($is_image_map)
-      return $map;
-    else
-      return $im;
+	if ($is_image_map) {
+		return $map;
+	} else {
+		return $im;
+	}
 }
 
 /**
-* Filter the requests we choose to display
-*
-* @param mixed $requests
-*/
+ * Checks if a request hostname contains string of requested hosts
+ * @param array $requestHost
+ * 		request hostname
+ * @param string $hosts
+ * 		array that contains requested hosts substrings
+ * @return boolean
+ * 		Does the request hostname belong to the requested hostnames?
+ */
+function checksRequestHost($requestHost, $hosts){
+	$result = false;
+	foreach($hosts as $host){
+		$host = trim($host);
+		$result |= (strlen(stristr($requestHost, $host)) > 0);
+	}
+	return $result;
+}
+
+/**
+ * Filter the requests we choose to display
+ *
+ * @param mixed $requests
+ */
 function FilterRequests($requests) {
-    $filtered_requests = array();
+	$filtered_requests_number = array();
     if (array_key_exists('requests', $_REQUEST) && strlen(trim($_REQUEST['requests']))) {
         $rlist = explode(',', urldecode($_REQUEST['requests']));
         foreach ($rlist as $r) {
@@ -713,20 +634,33 @@ function FilterRequests($requests) {
                     $end = min(count($requests) - 1, $range[1] - 1);
                     if ($end > $start)  {
                         for ($i = $start; $i <= $end; $i++) {
-                          $filtered_requests[$i] = &$requests[$i];
+							$filtered_requests_number[$i] = &$requests[$i];
                         }
                     }
                 } elseif ($r > 0 && $r <= count($requests)) {
-                    $filtered_requests[$r - 1] = &$requests[$r - 1];
+					$filtered_requests_number[$r - 1] = &$requests[$r - 1];
                 }
             }
         }
     }
+	
+	if (!count($filtered_requests_number))
+		$filtered_requests_number = $requests;
+	
+	$filtered_requests_hosts = array();
+	if (array_key_exists('hosts', $_REQUEST) && strlen(trim($_REQUEST['hosts']))) {	
+		$hostList = explode(',', urldecode($_REQUEST['hosts']));
+ 		foreach($filtered_requests_number as $index => $request){
+  			if(array_key_exists('host', $request) && checksRequestHost($request['host'], $hostList)){
+  				$filtered_requests_hosts[$index] = $request;
+  			}
+  		}
+	}
 
-    if (!count($filtered_requests))
-        $filtered_requests = $requests;
-        
-    return $filtered_requests;
+	if (!count($filtered_requests_hosts))
+		$filtered_requests_hosts = $filtered_requests_number;
+
+	return $filtered_requests_hosts;
 }
 
 class ColorAlternator
@@ -765,38 +699,9 @@ class XScaler
     }
 }
 
-function AverageCpuSlices($ms_start, $bins, &$slices, &$known_types) {
-  $avg = null;
-  if ($bins) {
-    $valid = false;
-    $totals = array();
-    $ms_end = $ms_start + $bins;
-    for ($ms = $ms_start; $ms < $ms_end; $ms++) {
-      if (count($slices[$ms])) {
-        foreach ($slices[$ms] as $type => $value) {
-          if ($value > 0) {
-            $valid = true;
-            if (!array_key_exists($type, $known_types))
-              $type = 'other';
-            if (!array_key_exists($type, $totals))
-              $totals[$type] = 0;
-            $totals[$type] += $value;
-          }
-        }
-      }
-    }
-    if ($valid) {
-      $avg = array();
-      foreach($totals as $type => $total)
-        $avg[$type] = $total / $bins;
-    }
-  }
-  return $avg;
-}
-
 /**
-*
-*/
+ *
+ */
 function AddRowCoordinates(&$rows, $y1, $row_height) {
     foreach ($rows as &$r) {
         $r['y1'] = $y1;
@@ -806,7 +711,7 @@ function AddRowCoordinates(&$rows, $y1, $row_height) {
 }
 
 /* Add 'bg_color' to each row.
-*/
+ */
 function SetRowColors(&$rows, $is_page_loaded, $bg_colors) {
     $row_color_alternator = new ColorAlternator($bg_colors['alt'],
                                                 $bg_colors['default']);
@@ -816,7 +721,7 @@ function SetRowColors(&$rows, $is_page_loaded, $bg_colors) {
             // This is a request view and not a connection view.
             $request = current($row['requests']);
             $code = $request['responseCode'];
-            if ($code != 401 && ($code >= 400 || ($code < 0 && !$is_page_loaded))) {
+            if ($code >= 400 || ($code < 0 && !$is_page_loaded)) {
                 $row['bg_color'] = $bg_colors['error'];
             } elseif ($code >= 300) {
                 $row['bg_color'] = $bg_colors['warning'];
@@ -826,21 +731,21 @@ function SetRowColors(&$rows, $is_page_loaded, $bg_colors) {
 }
 
 /**
-* Draw performance chart label.
-*
-* @param resource $im is an image resource.
-* @param string $key is which performance chart (e.g. 'cpu' or 'bw').
-* @param mixed $perf is an array of performance parameters.
-* @param int $font is the label's font indentifier.
-* @param int $label_color color identifier
-*/
+ * Draw performance chart label.
+ *
+ * @param resource $im is an image resource.
+ * @param string $key is which performance chart (e.g. 'cpu' or 'bw').
+ * @param mixed $perf is an array of performance parameters.
+ * @param int $font is the label's font indentifier.
+ * @param int $label_color color identifier
+ */
 function DrawPerfLabel($im, $key, $perf, $font, $label_color) {
   $x = $perf['x1'];
   $height = $perf['height'];
   $line_y = $perf['y1'] + ($height / 2) - 1;
   imageline($im, $x + 10, $line_y, $x + 45, $line_y, $perf['color']);
 
-  $label = $key;
+  $label = '';
   if ($key == 'cpu') {
       $label = 'CPU Utilization';
   } elseif ($key == 'bw') {
@@ -853,14 +758,14 @@ function DrawPerfLabel($im, $key, $perf, $font, $label_color) {
 }
 
 /**
-* Draw performance chart background.
-*
-* @param resource $im is an image resource.
-* @param mixed $perf is an array of performance parameters.
-* @param int $data_x is where the data area of the chart begins.
-* @param int $border_color color identifier
-* @param int $bg_color color identifier
-*/
+ * Draw performance chart background.
+ *
+ * @param resource $im is an image resource.
+ * @param mixed $perf is an array of performance parameters.
+ * @param int $data_x is where the data area of the chart begins.
+ * @param int $border_color color identifier
+ * @param int $bg_color color identifier
+ */
 function DrawPerfBackground($im, $perf, $data_x, $border_color, $bg_color) {
     $x1 = $perf['x1'];
     $x2 = $perf['x2'];
@@ -880,8 +785,8 @@ function DrawPerfBackground($im, $perf, $data_x, $border_color, $bg_color) {
 }
 
 /**
-* Return marker interval best fit.
-*/
+ * Return marker interval best fit.
+ */
 function TimeScaleInterval($max_ms, $target_count) {
     $target_interval = (float)$max_ms / (float)$target_count;
     $interval = $target_interval;
@@ -899,9 +804,9 @@ function TimeScaleInterval($max_ms, $target_count) {
 }
 
 /**
-* Format the label for the time scale.
-* @return string
-*/
+ * Format the label for the time scale.
+ * @return string
+ */
 function TimeScaleLabel($ms, $interval) {
     $places = 2;
     if ($interval >= 1000) {
@@ -913,17 +818,17 @@ function TimeScaleLabel($ms, $interval) {
 }
 
 /**
-* Draw $label centered at $x.
-*/
+ * Draw $label centered at $x.
+ */
 function DrawCenteredText($im, $x, $y, $label, $font, $font_width, $color) {
     $x -= (int)((double)$font_width * (double)strlen($label) / 2.0);
     imagestring($im, $font, $x, $y, $label, $color);
 }
 
 /**
-* Format the label for a request.
-* @return string
-*/
+ * Format the label for a request.
+ * @return string
+ */
 function GetRequestLabel($request, $show_labels = true) {
     $path = parse_url('http://' . $request['host'] . $request['url'],
                       PHP_URL_PATH);
@@ -941,8 +846,8 @@ function GetRequestLabel($request, $show_labels = true) {
 }
 
 /**
-* Append imagemap data for the main document url.
-*/
+ * Append imagemap data for the main document url.
+ */
 function AddMapUrl(&$map, $x1, $y1, $x2, $y2, $url) {
     $map[] = array(
         'url' => $url,
@@ -953,8 +858,8 @@ function AddMapUrl(&$map, $x1, $y1, $x2, $y2, $url) {
 }
 
 /**
-* Append imagemap data for a single request.
-*/
+ * Append imagemap data for a single request.
+ */
 function AddMapRequest(&$map, $x1, $y1, $x2, $y2, $request) {
     $scheme = $request['is_secure'] ? 'https://' : 'http://';
     $map[] = array(
@@ -980,9 +885,9 @@ function AddMapUserTime(&$map, $x1, $y1, $x2, $y2, $label) {
 
 
 /**
-* Return an array of 'bars' which define the coordinates and colors
-* for the parts of a request.
-*/
+ * Return an array of 'bars' which define the coordinates and colors
+ * for the parts of a request.
+ */
 function GetBars($request, $x_scaler, $y1, $y2,
                  $is_thumbnail, $is_mime, $is_state) {
     $bars = array();
@@ -1007,8 +912,8 @@ function GetBars($request, $x_scaler, $y1, $y2,
 }
 
 /**
-* Append a bar for a request part if it exists and is valid.
-*/
+ * Append a bar for a request part if it exists and is valid.
+ */
 function AddBarIfValid(&$bars, $key, $request, $x_scaler, $y1, $y2) {
     $start_key = $key . '_start';
     $end_key = $key . '_end';
@@ -1028,12 +933,12 @@ function AddBarIfValid(&$bars, $key, $request, $x_scaler, $y1, $y2) {
 }
 
 /**
-* Insert an interactive waterfall into the current page
-* 
-*/
-function InsertWaterfall($url, &$requests, $id, $run, $cached, &$page_data, $waterfall_options = '') {
-    global $settings;
-    
+ * Insert an interactive waterfall into the current page
+ *
+ */
+function InsertWaterfall($url, &$requests, $id, $run, $cached, $waterfall_options = '', $eventName = null, $file = null) {
+	global $settings;	
+
     // create the image map (this is for fallback when Javascript isn't enabled
     // but also gives us the position for each request)
     echo '<map name="waterfall_map">';
@@ -1046,8 +951,12 @@ function InsertWaterfall($url, &$requests, $id, $run, $cached, &$page_data, $wat
         'show_labels' => true,
         'width' => 930
         );
-    $rows = GetRequestRows($requests, false);
-    $map = GetWaterfallMap($rows, $url, $options, $page_data);
+	if($eventName != null){
+		$rows = GetRequestRows($requests[$eventName], false);
+	} else {
+   	 	$rows = GetRequestRows($requests, false);
+	}
+	$map = GetWaterfallMap($rows, $url, $options);
     foreach($map as $entry) {
         if (array_key_exists('request', $entry)) {
             $index = $entry['request'] + 1;
@@ -1060,10 +969,16 @@ function InsertWaterfall($url, &$requests, $id, $run, $cached, &$page_data, $wat
         }
     }
     echo '</map>';
-    
+	
     // main container for the waterfall
     echo '<div class="waterfall-container">';
-    echo "<img class=\"waterfall-image\" alt=\"\" onload=\"markUserTime('aft.Waterfall')\" usemap=\"#waterfall_map\" id=\"waterfall\" src=\"/waterfall.php?test=$id&run=$run&cached=$cached$waterfall_options\">";
+    echo "<img class=\"waterfall-image\" alt=\"\" onload=\"markUserTime('aft.Waterfall')\" usemap=\"#waterfall_map\" id=\"waterfall\" src=\"";   
+    if($file != null && file_exists($file)){
+    	echo substr($file, 1);
+    } else {
+    	echo "/waterfall.php?test=$id&run=$run&cached=$cached$waterfall_options&eventName=".urlencode($eventName);
+    }
+    echo "\">";
 
     // draw div's over each of the waterfall elements (use the image map as a reference)
     foreach($map as $entry) {
@@ -1078,39 +993,63 @@ function InsertWaterfall($url, &$requests, $id, $run, $cached, &$page_data, $wat
                     $tooltip = substr($tooltip, 0, $split) . '...';
                 $tooltip = FitText($tooltip, 100);
             }
-            echo "<div class=\"transparent request-overlay\" id=\"request-overlay-$index\" title=\"$tooltip\" onclick=\"SelectRequest($index)\" style=\"position: absolute; top: {$top}px; height: {$height}px;\"></div>\n";
+			echo "<div class=\"transparent request-overlay\" id=\"request-overlay-".getEventNameID($eventName)."-$index\" title=\"$tooltip\" onclick=\"SelectRequest('$eventName', $index)\" style=\"position: absolute; top: {$top}px; height: {$height}px;\"></div>\n";
         }
-    }
-
+	}	
     ?>
-    <div id="request-dialog" class="jqmDialog">
-        <div id="dialog-header" class="jqmdTC jqDrag">
-            <div id="dialog-title"></div>
-            <div id="request-dialog-radio">
-                <span id="request-details-button"><input type="radio" id="radio1" value="request-details" name="radio" checked="checked" /><label for="radio1">Details</label></span>
-                <span id="request-headers-button"><input type="radio" id="radio2" value="request-headers" name="radio" /><label for="radio2">Request</label></span>
-                <span id="response-headers-button"><input type="radio" id="radio3" value="response-headers" name="radio" /><label for="radio3">Response</label></span>
-                <span id="response-body-button"><input type="radio" id="radio4" value="response-body" name="radio" /><label for="radio4">Object</label></span>
+<div id="request-dialog<?php echo getEventNameID($eventName); ?>" class="jqmDialog">
+	<div id="dialog-header<?php echo getEventNameID($eventName); ?>" class="jqmdTC jqDrag">
+		<div id="dialog-title<?php echo getEventNameID($eventName); ?>" class="dialog-title"></div>
+		<div id="request-dialog-radio<?php echo getEventNameID($eventName); ?>"
+			class="request-dialog-radio">
+			<span id="request-details-button<?php echo getEventNameID($eventName); ?>"><input
+				type="radio" id="radio<?php echo getEventNameID($eventName); ?>1"
+				value="request-details<?php echo getEventNameID($eventName); ?>" name="radio"
+				checked="checked" /><label for="radio<?php echo getEventNameID($eventName); ?>1">Details</label>
+			</span> <span id="request-headers-button<?php echo getEventNameID($eventName); ?>"><input
+				type="radio" id="radio<?php echo getEventNameID($eventName); ?>2"
+				value="request-headers<?php echo getEventNameID($eventName); ?>" name="radio" /><label
+				for="radio<?php echo getEventNameID($eventName); ?>2">Request</label> </span> <span
+				id="response-headers-button<?php echo getEventNameID($eventName); ?>"><input
+				type="radio" id="radio<?php echo getEventNameID($eventName); ?>3"
+				value="response-headers<?php echo getEventNameID($eventName); ?>" name="radio" /><label
+				for="radio<?php echo getEventNameID($eventName); ?>3">Response</label> </span> <span
+				id="response-body-button<?php echo getEventNameID($eventName); ?>"><input
+				type="radio" id="radio<?php echo getEventNameID($eventName); ?>4"
+				value="response-body<?php echo getEventNameID($eventName); ?>" name="radio" /><label
+				for="radio<?php echo getEventNameID($eventName); ?>4">Object</label> </span>
             </div>
         </div>
         <div class="jqmdBC">
-            <div id="dialog-contents" class="jqmdMSG">
-                <div id="request-details" class="dialog-tab-content"></div>
-                <div id="request-headers" class="dialog-tab-content"></div>
-                <div id="response-headers" class="dialog-tab-content"></div>
-                <div id="response-body" class="dialog-tab-content"></div>
+		<div id="dialog-contents<?php echo getEventNameID($eventName); ?>" class="jqmdMSG">
+			<div id="request-details<?php echo getEventNameID($eventName); ?>"
+				class="dialog-tab-content"></div>
+			<div id="request-headers<?php echo getEventNameID($eventName); ?>"
+				class="dialog-tab-content request-headers"></div>
+			<div id="response-headers<?php echo getEventNameID($eventName); ?>"
+				class="dialog-tab-content response-headers"></div>
+			<div id="response-body<?php echo getEventNameID($eventName); ?>"
+				class="dialog-tab-content response-body"></div>
             </div>
         </div>
         <div class="jqmdX jqmClose"></div>
-    </div>
-    <div id="marker"></div>
-    <?php
+</div>
+<div id="marker"></div>
+<?php
 
-    echo '</div>'; // container
-    
-    // script support
+echo '</div>'; // container
+
+// script support
+	if($eventName != null){
+		$eventCount = array();
+		foreach(array_keys($requests) as $page){
+			$eventCount[$page] = count($requests[$eventName]);
+		}
+	} else {
+		$eventCount = count($requests);
+	}
     echo "<script type=\"text/javascript\">\n";
-    echo "var wptRequestCount=" . count($requests) . ";\n";
+	echo "var wptRequestCount=" . $eventCount. ";\n";
     echo "var wptRequestData=" . json_encode($requests) . ";\n";
     echo "var wptNoLinks={$settings['nolinks']};\n";
     echo "</script>";
@@ -1163,5 +1102,152 @@ function InsertMultiWaterfall(&$waterfalls, $waterfall_options) {
   }
   echo '<div id="marker"></div>';
   echo '</div>';
+}
+
+/**
+ * Generates a path to store the image for a waterfall or a connection view
+ * @param unknown $testPath
+ * 		path of the test
+ * @param unknown $run
+ * 		run of the view
+ * @param unknown $cached
+ * 		boolean if view belongs to cached view
+ * @param string $type
+ * 		type of the view
+ * 			"connection": connection view
+ * 		 	"waterfall":  waterfall view
+ */
+function generateViewImagePath($testPath, $eventName, $run, $cached, $type){
+	$path = "{$testPath}/{$run}_";
+	if($cached){
+		$path .= "Cached_";
+	}
+	$path .= getEventNameID($eventName)."_";
+	if ($type == 'connection') {
+		$path .= "connection_detail.png";
+	} else if ($type == 'waterfall') {
+		$path .= "waterfall_detail.png";
+	} else {
+		throw new Exception('Invalid image type for path generation');
+	}
+	return $path;
+}
+
+/**
+ * Creates an waterfall or an connection view image and saves it in a file (doesn't override old file)
+ * @param $id
+ * 		test id
+ * @param $testPath
+ * 		test path
+ * @param $testInfo
+ * 		test info array
+ * @param $eventName
+ * 		event name view belongs to
+ * @param $run
+ * 		run view belongs to
+ * @param $cached
+ * 		boolean if cached view
+ * @param $page_data
+ * 		page data for the view
+ * @param string $type
+ * 		type of the view
+ * 			"connection":   connection view
+ * 			"waterfall":	waterfall view
+ * @param $options (optional)
+ * 		options to configure the view
+ * 			bwIn,
+ * 			has_locations,
+ * 			is_mine, is_secure,
+ * 			rowcount,
+ * 			show_labels,
+ * 			use_bw,
+ * 			use_cps,
+ * 			use_dots,
+ * 			use_location_check
+ * @return
+ * 		waterfall or connection view image
+ */
+function createImageAndSave($id, $testPath, $testInfo, $eventName, $run, $cached, $page_data, $type, $options=null){
+	$img = null;
+	$url = generateViewImagePath($testPath, $eventName, $run, $cached, $type);
+	if(!file_exists($url)){
+		if($options == null){
+			$options = array();
+		}
+		if (array_key_exists('bwIn', $testInfo)) {
+			$options['bwIn'] = $testInfo['bwIn'];
+		} else {
+			setDefaultForUnusedOption('bwIn', 0, $options);
+		}
+		setDefaultForUnusedOption('has_locations', false, $options);
+		setDefaultForUnusedOption('is_secure', false, $options);
+		setDefaultForUnusedOption('rowcount', 0, $options);
+		setDefaultForUnusedOption('show_labels', true, $options);
+		setDefaultForUnusedOption('use_bw', true, $options);
+		setDefaultForUnusedOption('use_cpu', true, $options);
+		setDefaultForUnusedOption('use_dots', false, $options);
+		setDefaultForUnusedOption('use_location_check', false, $options);
+			
+		require_once('object_detail.inc');
+		require_once('waterfall.inc');
+		$requests = getRequests($id, $testPath, $run, $cached, $options['is_secure'], $options['has_locations'], $options['use_location_check'], false, true);
+		if(count($requests) > 0){
+			if ($type == 'connection') {
+				$is_state = true;
+				setDefaultForUnusedOption('is_mine', 1, $options);
+				$rows = GetConnectionRows($requests[$eventName], $options['show_labels']);
+			} else if($type == 'waterfall') {
+				setDefaultForUnusedOption('is_mine', 0, $options);
+				$rows = GetRequestRows($requests[$eventName], $options['use_dots'], $options['show_labels']);
+			} else {
+				throw new Execption('Invalid image type for image creation');
+			}
+			$page_events = GetPageEvents($page_data);
+			$creation_options = array(
+					'id' => $id,
+					'path' => $testPath,
+					'run_id' => $run,
+					'is_cached' => $cached,
+					'use_cpu' => $options['use_cpu'],
+					'use_bw' => $options['use_bw'],
+					'show_labels' => $options['show_labels'],
+					'max_bw' => $options['bwIn'],
+					'is_mime' => $options['is_mine'],
+					'is_state' => $is_state,
+					'rowcount' => $options['rowcount']
+			);
+			$img = GetWaterfallImage($rows, $url, $page_events, $creation_options, $page_data);
+			if($img){
+				imagepng($img, $url);
+			}
+		}
+	}
+	return $img;
+}
+
+
+/**
+ * Generates images for waterfall and connection views to improve loading time of the results
+ * @param $id
+ * 		test id
+ * @param $testPath
+ * 		test path
+ * @param $testInfo
+ * 		test info array
+ */
+function GenerateWaterfallAndConnectionImages($id, $testPath, $testInfo){
+	require_once('page_data.inc');
+	$pageDataArray = loadAllPageData($testPath, array('allEvents' => true));
+	foreach($pageDataArray as $eventName => $eventDataArray){
+		foreach($eventDataArray as $run => $runDataArray){
+			// Iterate over first and repeat view
+			for($i = 0; $i <= 1; $i++){
+				if(array_key_exists($i, $runDataArray)){
+					createImageAndSave($id, $testPath, $testInfo, $eventName, $run, $i, $runDataArray[$i], "waterfall");
+					createImageAndSave($id, $testPath, $testInfo, $eventName, $run, $i, $runDataArray[$i], "connection");
+				}
+			}
+		}
+	}
 }
 ?>

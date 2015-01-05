@@ -6,52 +6,63 @@ class Appurify{
   function __construct($key, $secret) {
     $this->key = $key;
     $this->secret = $secret;
-    if (function_exists('curl_init')) {
-      $this->curl = curl_init();
-      if ($this->curl !== false) {
-        curl_setopt($this->curl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($this->curl, CURLOPT_FAILONERROR, true);
-        curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($this->curl, CURLOPT_CONNECTTIMEOUT, 30);
-        curl_setopt($this->curl, CURLOPT_DNS_CACHE_TIMEOUT, 600);
-        curl_setopt($this->curl, CURLOPT_MAXREDIRS, 10);
-        curl_setopt($this->curl, CURLOPT_TIMEOUT, 600);
-        curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, false);
+    $this->curl = curl_init();
+    if ($this->curl !== false) {
+      curl_setopt($this->curl, CURLOPT_RETURNTRANSFER, true);
+      curl_setopt($this->curl, CURLOPT_FAILONERROR, true);
+      curl_setopt($this->curl, CURLOPT_FOLLOWLOCATION, true);
+      curl_setopt($this->curl, CURLOPT_CONNECTTIMEOUT, 30);
+      curl_setopt($this->curl, CURLOPT_DNS_CACHE_TIMEOUT, 600);
+      curl_setopt($this->curl, CURLOPT_MAXREDIRS, 10);
+      curl_setopt($this->curl, CURLOPT_TIMEOUT, 600);
+      curl_setopt($this->curl, CURLOPT_SSL_VERIFYPEER, false);
+/*
+      $log = fopen("./log/appurify-curl-post.txt", 'a+');
+      if ($log) {
+        curl_setopt($this->curl, CURLOPT_VERBOSE, true);
+        curl_setopt($this->curl, CURLOPT_STDERR, $log);
       }
+*/      
     }
+    $this->GenerateToken();
   }
   
   /**
   * Get a list of the available devices
   */
-  public function GetDevices($fromServer = false) {
+  public function GetDevices() {
     $devices = null;
+    $this->Lock();
     $ttl = 120;
-    if (!$fromServer && is_file("./tmp/appurify_{$this->key}.devices")) {
+    if (is_file("./tmp/appurify_{$this->key}.devices")) {
       $cache = json_decode(file_get_contents("./tmp/appurify_{$this->key}.devices"), true);
-      $devices = $cache['devices'];
-    } elseif ($fromServer) {
+      $now = time();
+      if ($cache &&
+          is_array($cache) &&
+          array_key_exists('devices', $cache) &&
+          array_key_exists('time', $cache) &&
+          $now >= $cache['time'] &&
+          $now - $cache['time'] < $ttl)
+        $devices = $cache['devices'];
+    }
+    if (!isset($devices)) {
       $devices = array();
       $list = $this->Get('https://live.appurify.com/resource/devices/list/');
       if ($list !== false && is_array($list)) {
         foreach($list as $device) {
-          if ($device['brand'] == 'Amazon') {
-            $id = $device['device_type_id'] . '-silk';
-            $name = "{$device['brand']} {$device['name']} {$device['os_name']} {$device['os_version']} - Silk";
-          } else {
-            if ($device['os_name'] == 'iOS' /* && intval($device['os_version']) < 7 */) {
-              $id = $device['device_type_id'] . '-safari';
-              $name = "{$device['brand']} {$device['name']} {$device['os_name']} {$device['os_version']} - Safari";
-              $devices[$id] = $name;
-            }
-            $id = $device['device_type_id'] . '-chrome';
-            $name = "{$device['brand']} {$device['name']} {$device['os_name']} {$device['os_version']} - Chrome";
+          if ($device['os_name'] == 'iOS' /* && intval($device['os_version']) < 7 */) {
+            $id = $device['device_type_id'] . '-safari';
+            $name = "{$device['brand']} {$device['name']} {$device['os_name']} {$device['os_version']} - Safari";
+            $devices[$id] = $name;
           }
+          $id = $device['device_type_id'] . '-chrome';
+          $name = "{$device['brand']} {$device['name']} {$device['os_name']} {$device['os_version']} - Chrome";
           $devices[$id] = $name;
         }
       }
       file_put_contents("./tmp/appurify_{$this->key}.devices", json_encode(array('devices' => $devices, 'time' => time())));
     }
+    $this->Unlock();
     return $devices;
   }
   
@@ -59,13 +70,22 @@ class Appurify{
   * Get the list of supported connectivity profiles
   * 
   */
-  public function GetConnections($fromServer = false) {
+  public function GetConnections() {
     $connections = null;
+    $this->Lock();
     $ttl = 900;
-    if (!$fromServer && is_file("./tmp/appurify_{$this->key}.connections")) {
+    if (is_file("./tmp/appurify_{$this->key}.connections")) {
       $cache = json_decode(file_get_contents("./tmp/appurify_{$this->key}.connections"), true);
-      $connections = $cache['connections'];
-    } elseif ($fromServer) {
+      $now = time();
+      if ($cache &&
+          is_array($cache) &&
+          array_key_exists('connections', $cache) &&
+          array_key_exists('time', $cache) &&
+          $now >= $cache['time'] &&
+          $now - $cache['time'] < $ttl)
+        $connections = $cache['connections'];
+    }
+    if (!isset($connections)) {
       $connections = array();
       $list = $this->Get('https://live.appurify.com/resource/devices/config/networks/list/');
       if ($list !== false && is_array($list)) {
@@ -76,6 +96,7 @@ class Appurify{
       }
       file_put_contents("./tmp/appurify_{$this->key}.connections", json_encode(array('connections' => $connections, 'time' => time())));
     }
+    $this->Unlock();
     return $connections;
   }
   
@@ -126,7 +147,7 @@ class Appurify{
             $timeline = "timeline=1\r\n";
           if (stripos($device, '-') !== false)
             list($device, $browser) = explode('-', $device);
-          $result = $this->Post('https://live.appurify.com/resource/tests/config/upload/',
+          $result = $this->Post('https://live.appurify.com/resource/config/upload/',
                                 array('test_id' => $test_id),
                                 array('name' => 'source',
                                       'filename' => 'browsertest.conf',
@@ -328,6 +349,7 @@ class Appurify{
   protected $curl;
   protected function GenerateToken() {
     if (!isset($this->token)) {
+      $this->Lock();
       $ttl = 600;
       if (is_file("./tmp/appurify_{$this->key}.token")) {
         $token = json_decode(file_get_contents("./tmp/appurify_{$this->key}.token"), true);
@@ -341,7 +363,6 @@ class Appurify{
           $this->token = $token['token'];
       }
       if (!isset($this->token)) {
-        $this->Lock();
         $result = $this->Post('https://live.appurify.com/resource/access_token/generate/',
                                 array('key' => $this->key,
                                       'secret' => $this->secret,
@@ -350,24 +371,27 @@ class Appurify{
           $this->token = $result['access_token'];
           file_put_contents("./tmp/appurify_{$this->key}.token", json_encode(array('token' => $this->token, 'time' => time())));
         }
-        $this->UnLock();
       }
+      $this->UnLock();
     }
   }
   
   protected function Lock() {
-    $this->lock = Lock("Appurify {$this->key}");
+    $this->lock = fopen("./tmp/appurify_{$this->key}.lock", 'w');
+    if ($this->lock)
+      flock($this->lock, LOCK_EX);
   }
 
   protected function UnLock() {
-    if (isset($this->lock))
-      Unlock($this->lock);
+    if ($this->lock) {
+      flock($this->lock, LOCK_UN);
+      fclose($this->lock);
+      unset($this->lock);
+    }
   }
   
   protected function Post($command, $data = null, $file = null) {
     $ret = false;
-    if (stripos($command, 'access_token') === false)
-      $this->GenerateToken();
     if ($this->curl !== false) {
       if (isset($this->token)) {
         if(!isset($data))
@@ -405,7 +429,6 @@ class Appurify{
   
   protected function Get($command, $data = null) {
     $ret = false;
-    $this->GenerateToken();
     if ($this->curl !== false) {
       if (isset($this->token)) {
         if(!isset($data))
@@ -435,7 +458,6 @@ class Appurify{
 
   protected function GetFile($command, $file, $data = null) {
     $ret = false;
-    $this->GenerateToken();
     if ($this->curl !== false) {
       if (isset($this->token)) {
         if(!isset($data))

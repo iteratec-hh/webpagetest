@@ -1,8 +1,8 @@
 <?php
 include 'common.inc';
-require_once('breakdown.inc');
+include 'breakdown.inc';
 require_once('contentColors.inc');
-require_once('waterfall.inc');
+include 'waterfall.inc';
 require_once('page_data.inc');
 
 $page_keywords = array('Timeline Breakdown','Webpagetest','Website Speed Test','Page Speed');
@@ -50,7 +50,13 @@ $page_description = "Chrome main thread processing breakdown$testLabel";
             $tab = 'Test Result';
             $subtab = 'Processing Breakdown';
             include 'header.inc';
-            $processing = GetDevToolsCPUTime($testPath, $run, $cached);
+            $progress = GetVisualProgress($testPath, $run, $cached);
+            if (isset($progress) &&
+                is_array($progress) &&
+                array_key_exists('DevTools', $progress) &&
+                is_array($progress['DevTools']) &&
+                array_key_exists('processing', $progress['DevTools']))
+              $processing = $progress['DevTools']['processing'];
             if (isset($processing)) {
               arsort($processing);
               $mapping = array('EvaluateScript' => 'Scripting',

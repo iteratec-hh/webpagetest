@@ -1,37 +1,58 @@
-Debug/
-PageSpeed/lib/Debug/
-Release/
-lib-release/
-lib-debug/
-wptdriver tests/
-/ipch/
-.idea/
+# wpt-specifics
+Debug
+Release
 *.vcxproj.user
 *.vcproj.*.user
 *~
 *.pyc
-*.testsettings
-*.aps
+Local.testsettings
+TraceAndTestImpact.testsettings
+wptdriver.ini
+wpthook.aps
 webpagetest.opensdf
 webpagetest.sdf
-*.suo
+webpagetest.suo
 webpagetest.vsmdi
+wptdriver tests/
 .svn
 *.last
+agent/
+www/results
+www/log.txt
+www/tmp
+www/work/jobs/uniqueId.dat
+www/logs/*.log
+www/work/jobs
+www/work/video
+www/nbproject
 .DS_store
-*.ppw
-*.ppd
-*.ppj
-*.ppx
-*.dsk
-*.idx
-*.ncb
-*.$wrk
-agent/js/*.log
-agent/js/node_modules/.bin/jshint
-agent/js/node_modules/jshint/
-agent/js/results/
-agent/js/src-cov/
-agent/js/runtmp_*
-.vagrant
-/www/installers/browsers/nightly.dat
+dist/
+batchtool/
+bulktest/
+
+# ignore dolphin temp file
+*.directory
+
+# ignore itellj settings
+*.iml
+*.ipr
+*.iws
+
+# ignore eclipse settings
+.classpath
+.project
+.settings
+
+# ignore build folders 'n results
+bin/
+build/
+target*/
+
+# ignore .gradle 
+.gradle/
+
+# ignore log files
+*.log
+
+# ignore c++ projects
+*.sln
