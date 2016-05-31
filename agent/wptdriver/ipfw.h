@@ -39,6 +39,8 @@ public:
 protected:
   bool Init();
   bool Execute(CString cmd);
+  void LogExecute(CString cmd);
+
   HANDLE hDriver;
   CString ipfw_dir_;
   bool win32_;
