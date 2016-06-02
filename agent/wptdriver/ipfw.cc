@@ -101,6 +101,7 @@ bool CIpfw::SetPipe(unsigned int num, unsigned long bandwidth,
     ret = Execute(cmd_line);
 
     // Packet loss needs to be applied to the queue
+	/*
     if (ret) {
       cmd_line.Format(_T("queue %d config"), num);
       if (plr > 0.0 && plr <= 1.0) {
@@ -111,6 +112,7 @@ bool CIpfw::SetPipe(unsigned int num, unsigned long bandwidth,
       }
       Execute(cmd_line);
     }
+	*/
 
     // on 32-bit systems, fall back to talking to the driver directly
     if (win32_ && !ret) {
