@@ -29,7 +29,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "stdafx.h"
 #include "ipfw.h"
 #include "ipfw_int.h"
-#include <fstream>
 
 /*-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------*/
@@ -101,7 +100,6 @@ bool CIpfw::SetPipe(unsigned int num, unsigned long bandwidth,
     ret = Execute(cmd_line);
 
     // Packet loss needs to be applied to the queue
-	/*
     if (ret) {
       cmd_line.Format(_T("queue %d config"), num);
       if (plr > 0.0 && plr <= 1.0) {
@@ -112,7 +110,6 @@ bool CIpfw::SetPipe(unsigned int num, unsigned long bandwidth,
       }
       Execute(cmd_line);
     }
-	*/
 
     // on 32-bit systems, fall back to talking to the driver directly
     if (win32_ && !ret) {
@@ -172,25 +169,6 @@ bool CIpfw::SetPipe(unsigned int num, unsigned long bandwidth,
   return ret;
 }
 
-void CIpfw::LogExecute(CString cmd) {
-	time_t rawtime;
-	struct tm * timeinfo;
-	char timestr[80];
-
-	time(&rawtime);
-	timeinfo = localtime(&rawtime);
-	strftime(timestr, 80, "[%Y-%m-%d %I:%M:%S]", timeinfo);
-	
-	CT2CA convertedDir(ipfw_dir_);
-	CT2CA convertedCmd(cmd);
-	std::string logfile, dirname(convertedDir);
-	logfile = dirname + "ipfw_log.txt";
-
-	std::fstream outfile;
-	outfile.open(logfile, std::fstream::out | std::fstream::app);
-	outfile << timestr << " Executing '" << convertedCmd << "'" << std::endl;
-}
-
 /*-----------------------------------------------------------------------------
   Execute the given ipfw command
 -----------------------------------------------------------------------------*/
@@ -200,8 +178,6 @@ bool CIpfw::Execute(CString cmd) {
     CString command;
     command.Format(_T("cmd /C \"ipfw.exe %s\""), (LPCTSTR)cmd);
     AtlTrace(_T("Configuring dummynet: '%s'"), (LPCTSTR)command);
-	
-	LogExecute(command);
     ret = LaunchProcess(command, NULL, ipfw_dir_);
   }
   return ret;
