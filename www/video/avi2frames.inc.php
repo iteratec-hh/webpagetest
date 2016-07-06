@@ -62,7 +62,7 @@ function ProcessAVIVideo(&$test, $testPath, $run, $cached) {
   $crop = '';
   if (!is_file($videoFile))
     $videoFile = "$testPath/$run{$cachedText}_video.avi";
-    
+
   if (is_file($videoFile)) {
     $videoDir = "$testPath/video_".$run . strtolower($cachedText);
     if (!is_file("$videoDir/video.json")) {
@@ -193,34 +193,32 @@ function MoveVideoFilesToStepfolders($id,$videoDir,$testPath,$run,$cached){
   $haveLocations = false;
   $requests = getRequests($id, $testPath, $run, $cached, $secure, $haveLocations, true, true, true);
 
-  $eventNumber = 0;
+  $eventNumber = 1;
+  $max_eventNumber = count($requests);
 
   $stepBeginsAt = getRelativeBeginOfEveryStep($testPath,$run,$cached);
 
   //SORT IMAGES TO STEP-FOLDER
   foreach($requests as $eventRequests){
-    $eventNumber++;
     $destVideoPath = $testPath."/video_".$run."_".$eventNumber;
-    $destPreviousVideoPath = $testPath."/video_".$run."_".($eventNumber-1);
 
     $allImages = glob($videoDir."/ms_*");
 
     mkdir($destVideoPath, 0777, true);
 
     //Move video-images of the previous step into the correct folder
-    if ((count($requests) > 1) && $eventNumber > 1){
-      foreach($allImages as $imageFile){
-        if(preg_match('/ms_(?P<frame>[0-9]+)/', $imageFile, $matches)){
-          $frameTime = intval($matches['frame']);
-          $filename = basename($imageFile);
-          if($frameTime < $stepBeginsAt[($eventNumber)]){
-            copy($imageFile, $destPreviousVideoPath . "/" . $filename);
-          } elseif((count($requests) == $eventNumber) && $frameTime >= $stepBeginsAt[($eventNumber)]){
-            copy($imageFile, $destVideoPath . "/" . $filename);
-          }
+    foreach($allImages as $imageFile){
+      if(preg_match('/ms_(?P<frame>[0-9]+)/', $imageFile, $matches)){
+        $frameTime = intval($matches['frame']);
+        $filename = basename($imageFile);
+        if($max_eventNumber == $eventNumber && $frameTime >= $stepBeginsAt[($eventNumber)]){ // if is last step from job
+          copy($imageFile, $destVideoPath . "/" . $filename);
+        } elseif($frameTime >= $stepBeginsAt[$eventNumber] && $frameTime < $stepBeginsAt[$eventNumber+1]){
+          copy($imageFile, $destVideoPath . "/" . $filename);
         }
       }
     }
+    $eventNumber++;
   }
 
   //RENAMING ALL VIDEO-IMAGES
@@ -409,7 +407,7 @@ function FindAVIViewport($videoDir, $startOffset, &$viewport) {
 
 /**
 * Find the viewport from the given image
-* 
+*
 * @param mixed $file
 */
 function GetImageViewport($file) {
@@ -485,7 +483,7 @@ function CreateHistogram($image_file, $histogram_file, $viewport) {
 
 /**
 * See if we can find the viewport from the first frame of the video and crop down to that
-* 
+*
 * @param mixed $videoFile
 * @param mixed $videoDir
 */
@@ -510,7 +508,7 @@ function FindVideoCrop($videoFile, $videoDir) {
 /**
 * Run the python version of the video extraction if it is available.
 * It is much faster for generating the histograms.
-* 
+*
 * @param mixed $videoFile
 * @param mixed $videoDir
 * @param mixed $devToolsFile
