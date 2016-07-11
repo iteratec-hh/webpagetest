@@ -43,7 +43,7 @@ foreach($compTests as $t) {
             RestoreTest($test['id']);
             $test['path'] = GetTestPath($test['id']);
             $pageData = loadAllPageData($test['path'], array('allEvents' => true, 'eventNumberKeys' => true));
-           	$test['pageData'] = $pageData[$test['eventNumber']];  
+           	$test['pageData'] = $pageData[$test['eventNumber']];
 
             $info = GetTestInfo($test['id']);
             if ($info) {
@@ -66,7 +66,7 @@ foreach($compTests as $t) {
                     if( !array_key_exists('run', $test) || !$test['run'] )
                         $test['run'] = GetMedianRun($test['pageData'],$test['cached'], $median_metric);
                     $test['aft'] = array_key_exists('aft', $test['pageData'][$test['run']][$test['cached']]) ? $test['pageData'][$test['run']][$test['cached']]['aft'] : 0;
-                    
+
                     $loadTime = $test['pageData'][$test['run']][$test['cached']]['fullyLoaded'];
                     if( isset($loadTime) && (!isset($fastest) || $loadTime < $fastest) )
                         $fastest = $loadTime;
@@ -203,13 +203,17 @@ function LoadTestData() {
             $end = null;
             if (is_numeric($test['end']) && $test['end'] > 0)
                 $end = $test['end'] / 1000.0;
-            $startOffset = array_key_exists('testStartOffset', $pageData[$test['run']][$test['cached']]) ? intval(round($pageData[$test['run']][$test['cached']]['testStartOffset'])) : 0;
+            if(array_key_exists('eventNumber',$test)) {
+                $startOffset = 0;
+            } else {
+                $startOffset = array_key_exists('testStartOffset', $pageData[$test['run']][$test['cached']]) ? intval(round($pageData[$test['run']][$test['cached']]['testStartOffset'])) : 0;
+            }
             $test['video']['progress'] = GetVisualProgress($testPath, $test['run'], $test['cached'], array('eventNumber' => $test['eventNumber']), $end, $startOffset);
             if (array_key_exists('frames', $test['video']['progress'])) {
               foreach($test['video']['progress']['frames'] as $ms => $frame) {
                 if (!$supports60fps && is_array($frame) && array_key_exists('file', $frame) && substr($frame['file'], 0, 3) == 'ms_')
                   $supports60fps = true;
-                  
+
                 if( !$test['end'] || $test['end'] == -1 || $ms <= $test['end'] ) {
                   $path = "$videoPath/{$frame['file']}";
                   if( $ms < $test['video']['start'] )
