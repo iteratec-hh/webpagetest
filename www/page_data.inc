@@ -33,7 +33,7 @@ function loadAllPageData($testPath, $options = null)
 	    $completed = true;
 	    if ($testInfo && (!array_key_exists('completed', $testInfo) || !$testInfo['completed']))
 	      $completed = false;
-	
+
 	for( $run = 1; $run <= $runs; $run++ ) {
       // only load page data for individual runs that are complete (or if the whole test is complete)
       if ($completed || !$testInfo || IsTestRunComplete($run, $testInfo)) {
@@ -46,7 +46,7 @@ function loadAllPageData($testPath, $options = null)
   				$tmp = array();
   				if( isset($dataFV) ){
   					$tmp[0] = $dataFV;
-  				}	
+  				}
   				if( !$fvonly && isset($dataArrayRV) && array_key_exists($eventName, $dataArrayRV) ){
   					$tmp[1] = $dataArrayRV[$eventName];
   				}
@@ -68,7 +68,7 @@ function loadAllPageData($testPath, $options = null)
 			}
 		}
 	}
-	
+
 	return $ret;
 }
 
@@ -117,7 +117,7 @@ function loadPageRunData($testPath, $run, $cached, $options = null)
            if (isset($data) && !$basic_results)
            {
             $startOffset = array_key_exists('testStartOffset', $ret) ? intval(round($data['testStartOffset'])) : 0;
-            loadUserTimingData($data, $testPath, $run, $cached); // MAYNOTWORK
+            loadUserTimingData($data, $testPath, $run, $cached, $eventNumber); // MAYNOTWORK
 
             // MAYNOTWORK see if we have custom metrics to load
             if (gz_is_file("$testPath/{$run}{$cachedText}_metrics.json"))
@@ -135,7 +135,7 @@ function loadPageRunData($testPath, $run, $cached, $options = null)
                 }
             }
         }
-  			
+
         // MAYNOTWORK see if we have CSI metrics to load
         if (is_dir('./google') && is_file('./google/google_lib.inc'))
         {
@@ -153,7 +153,7 @@ function loadPageRunData($testPath, $run, $cached, $options = null)
                 }
             }
         }
-  			
+
         if (array_key_exists('loadTime', $data) &&
             !$data['loadTime'] &&
             array_key_exists('fullyLoaded', $data) &&
@@ -255,7 +255,7 @@ function loadPageRunData($testPath, $run, $cached, $options = null)
 
         $data['run'] = $run;
         $data['cached'] = $cached;
-          
+
         // calculate the effective bps
         if (array_key_exists('fullyLoaded', $data) &&
           array_key_exists('TTFB', $data) &&
@@ -308,7 +308,7 @@ function loadPageRunData($testPath, $run, $cached, $options = null)
         $ret[$eventName] = $data;
   	}
 
-    
+
 
 
   	if(checkOptionKeyAndGetValue('allLevels', $options))
@@ -380,13 +380,13 @@ function loadPageData($file, $options = null)
 			$parseLine = str_replace("\t", "\t ", $line);
 			$fields = explode("\t", $parseLine);
 		 	$eventName = getFullEventName($test_info['label'], trim($fields[2]), $linenum, $ret);
-		
+
 			if( count($fields) > 34 && trim($fields[0]) != 'Date' )
 			{
 				$ret[$eventName] = array();
-					$ret[$eventName] = array( 
+					$ret[$eventName] = array(
 							'eventName' => $eventName,
-							'eventNumber' => $eventNumber++,  
+							'eventNumber' => $eventNumber++,
 							'URL' => @htmlspecialchars(trim($fields[3])),
 						                        // 'loadTime' => (int)$fields[4],
 						                        'loadTime' => @(int)$fields[32],
@@ -440,7 +440,7 @@ function loadPageData($file, $options = null)
                           						'base_page_cdn' => @trim($fields[86]),
                           						'adult_site' => @(int)trim($fields[87])
 				);
-					
+
 				$ret[$eventName]['fixed_viewport'] = (array_key_exists(88, $fields) && strlen(trim($fields[88]))) ? (int)trim($fields[88]) : -1;
 				$ret[$eventName]['score_progressive_jpeg'] = (array_key_exists(89, $fields) && strlen(trim($fields[89]))) ? (int)trim($fields[89]) : -1;
 				$ret[$eventName]['firstPaint'] = (array_key_exists(90, $fields) && strlen(trim($fields[90]))) ? (int)trim($fields[90]) : 0;
@@ -487,7 +487,7 @@ function calculatePageStats(&$pageData, &$fv, &$rv)
 	$rvCount = 0;
 
 	$ignoreMetrics = array('eventName', 'eventNumber');
-		
+
 	// calculate the averages
 	if( count($pageData) ) {
 		foreach( $pageData as $run => $data ) {
@@ -576,11 +576,11 @@ function calculatePageStats(&$pageData, &$fv, &$rv)
 	        if (is_numeric($rv[$metric]))
 					$rv[$metric] /= (double)$rvCount;
 	}
-	
+
 		// go through and find the run closest to the average
 		$closest = -1;
 		$distance = 10000000000;
-	
+
 		foreach( $pageData as $run => $data )
 		{
 			if( isset($data[1]) && successfulRun($data[1]) )
@@ -603,7 +603,7 @@ function calculatePageStats(&$pageData, &$fv, &$rv)
 * corresponding to the median (or lower of two middle values) of $metric,
 * unless the "medianRun" parameter is set to "fastest",
 * in which case it returns the index of the fastest run.
-* 
+*
 * @param mixed $pageData
 * @param mixed $cached
 */
@@ -710,7 +710,7 @@ function CalculateAggregateStats(&$pageData, $cached, $metric, &$median, &$avg, 
 
 /**
 * Calculate the standard deviation for the provided metric
-* 
+*
 */
 function PageDataStandardDeviation($pageData, $metric, $cached) {
     $ret = null;
@@ -740,16 +740,16 @@ function PageDataStandardDeviation($pageData, $metric, $cached) {
 
 /**
 * Load the reported user timings data for the given run
-* 
+*
 * @param mixed $testPath
 * @param mixed $run
 * @param mixed $cached
 */
-function loadUserTimingData(&$pageData, $testPath, $run, $cached) {
+function loadUserTimingData(&$pageData, $testPath, $run, $cached, $eventNumber) {
   if( $cached )
-    $file = "$testPath/{$run}_Cached_timed_events.json";
+    $file = "$testPath/{$run}_Cached_{$eventNumber}_timed_events.json";
   else
-    $file = "$testPath/{$run}_timed_events.json";
+    $file = "$testPath/{$run}_{$eventNumber}_timed_events.json";
   if (gz_is_file($file)) {
     $events = json_decode(gz_file_get_contents($file), true);
     if (isset($events) && is_array($events) && count($events)) {

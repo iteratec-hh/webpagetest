@@ -225,6 +225,8 @@ $page_description = "Website performance test details$testLabel";
 				echo "<td id=\"startRender\" valign=\"middle\">" . formatMsInterval($data['render'], 3) . "</td>\n";
 				if (array_key_exists('userTime', $data) && (float)$data['userTime'] > 0.0 )
 					echo "<td id=\"userTime\" valign=\"middle\">" . formatMsInterval($data['userTime'], 3) . "</td>\n";
+				elseif (checkForAllEventNames($dataArray, 'userTime', '>', 0.0, "float"))
+					echo "<td></td>\n";
 				if (array_key_exists('aft', $test['test']) && $test['test']['aft'] ) {
 					$aft = number_format($data['aft'] / 1000.0, 1) . 's';
 					if( !$data['aft'] )
