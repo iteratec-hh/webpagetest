@@ -350,7 +350,7 @@ $page_description = "Website performance test details$testLabel";
 			$borderClass = '';
 			if ($timingCount)
 				$borderClass = ' class="border"';
-			echo '<table id="tableW3CTiming" class="pretty" align="center" border="1" cellpadding="10" cellspacing="0">';
+			echo '<div style="width:auto; overflow:scroll"><table id="tableW3CTiming" class="pretty" align="center" border="1" cellpadding="10" cellspacing="0">';
 			echo '<tr>';
             if ($timingCount) {
                 $borderClassRight = 'class="right_border"';
@@ -389,7 +389,7 @@ $page_description = "Website performance test details$testLabel";
 				}
 				echo '</tr>';
 			}
-			echo '</table><br>';
+			echo '</table></div><br>';
 		}
 		$secure = false;
 		$haveLocations = false;
