@@ -322,6 +322,19 @@ $page_description = "Website performance test details$testLabel";
 			$userTimingsArray[$eventName] = $userTimings;
 		}
 
+		//ensure that every event has the same userTimingKeys
+		//it's needed for tabular-representation later
+		foreach($userTimingsArray as $eventName1 => $userTimings1) {
+			foreach($userTimingsArray as $eventName2 => $userTimings2) {
+				foreach($userTimings1 as $key => $value) {
+					if(!array_key_exists($key, $userTimings2)) {
+						$userTimings2[$key] = "";
+					}
+				}
+				$userTimingsArray[$eventName2] = $userTimings2;
+			}
+		}
+
 		//check if any userTiming matches this conditions
 		$timingCount = 0;
 		$navTiming = false;
