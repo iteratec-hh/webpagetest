@@ -240,11 +240,19 @@ $page_description = "Website performance test details$testLabel";
 						echo "<td id=\"speedIndex\" valign=\"middle\">{$data['SpeedIndexCustom']}</td>\n";
 					else
 						echo "<td id=\"speedIndex\" valign=\"middle\">{$data['SpeedIndex']}</td>\n";
+				} elseif (checkForAllEventNames($dataArray, 'SpeedIndex', '>', 0.0, "int")) {
+					echo "<td></td>";
 				}
-				if (array_key_exists('domTime', $data) && (float)$data['domTime'] > 0.0 )
+				if (array_key_exists('domTime', $data) && (float)$data['domTime'] > 0.0 ) {
 					echo "<td id=\"domTime\" valign=\"middle\">" . formatMsInterval($data['domTime'], 3) . "</td>\n";
-				if (array_key_exists('domElements', $data) && $data['domElements'] > 0 )
+				} elseif (checkForAllEventNames($dataArray, 'domTime', '>', 0.0, "float")) {
+					echo "<td></td>";
+				}
+				if (array_key_exists('domElements', $data) && $data['domElements'] > 0 ) {
 					echo "<td id=\"domElements\" valign=\"middle\">{$data['domElements']}</td>\n";
+				} elseif (checkForAllEventNames($dataArray, 'domElements', '>', 0)) {
+					echo "<td></td>";
+				}
 				$resultCode = $data['result'];
 				if(!isset($resultCode) || $resultCode === null || $resultCode === ""){
 					$resultCode = "&nbsp;";
