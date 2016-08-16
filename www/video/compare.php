@@ -850,15 +850,10 @@ function DisplayGraphs() {
             if ($progress_end) {
                 echo "var dataProgress = google.visualization.arrayToDataTable([\n";
                 echo "  ['Time (ms)'";
-                foreach($tests as &$test){					
-					$numberedEventName = GetNumberedEventName($test);
+                foreach($tests as &$test){
+                    $numberedEventName = GetNumberedEventName($test);
                     echo ", '{$numberedEventName}'";
                 }
-					$count = 0;
-                    foreach($tests as &$test){
-						$numberedEventName = GetNumberedEventName($test);
-                        echo ", '{$numberedEventName} (Dev Tools)'";
-                    }
                 echo " ]";
                 for ($ms = 0; $ms <= $progress_end; $ms += 100) {
                     echo ",\n  ['" . number_format($ms / 1000, 1) . "'";
